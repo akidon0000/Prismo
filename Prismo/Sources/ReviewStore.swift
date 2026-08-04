@@ -124,6 +124,10 @@ final class ReviewStore: ObservableObject {
             checkoutPaths[pr.id] = result.workingDirectory.path
             let ide = result.openedIDE.map { " · \($0)" } ?? ""
             statusMessage = "Checkout 完了: \(result.workingDirectory.path)\(ide)"
+            CheckoutNotifier.notifySuccess(
+                repository: pr.repository,
+                path: result.workingDirectory.path
+            )
         } catch {
             lastError = error.localizedDescription
             statusMessage = "Checkout 失敗"
