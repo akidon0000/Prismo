@@ -11,19 +11,34 @@ struct PRDetailView: View {
                 VStack(spacing: 0) {
                     header(pr)
                     Divider()
-                    if let graph = store.callGraph {
-                        if graph.nodes.isEmpty {
-                            ContentUnavailableView(
-                                "変更ファイルなし",
-                                systemImage: "doc",
-                                description: Text("この PR に表示できるコード変更がありません。")
-                            )
-                        } else {
-                            CallGraphView(graph: graph)
-                        }
-                    } else {
+                    if store.callGraph == nil {
                         ProgressView("呼び出しグラフを構築中…")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let graph = store.callGraph, graph.nodes.isEmpty {
+                        ContentUnavailableView(
+                            "変更ファイルなし",
+                            systemImage: "doc",
+                            description: Text("この PR に表示できるコード変更がありません。")
+                        )
+                    } else if let graph = store.callGraph {
+                        HSplitView {
+                            CallGraphView(
+                                graph: graph,
+                                selectedNodeID: store.selectedNodeID,
+                                onSelect: { store.selectNode($0) }
+                            )
+                            .frame(minWidth: 360)
+
+                            DiffPaneView(
+                                filePath: store.selectedNode?.filePath,
+                                symbolName: store.selectedNode?.symbolName,
+                                focusLine: store.selectedNode?.line ?? 1,
+                                lines: store.focusedDiffLines,
+                                canJump: store.canJump(settings: settings),
+                                onJump: { store.jumpToSelected(settings: settings) }
+                            )
+                            .frame(minWidth: 320)
+                        }
                     }
                 }
             }
@@ -80,6 +95,8 @@ struct PRDetailView: View {
 /// ファイル名順ではなく、呼び出し順に並んだファイル列ビュー。
 struct CallGraphView: View {
     let graph: CallGraph
+    let selectedNodeID: String?
+    let onSelect: (CallGraphNode) -> Void
 
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
@@ -88,13 +105,15 @@ struct CallGraphView: View {
                     FileColumnView(
                         index: index,
                         filePath: column.filePath,
-                        nodes: column.nodes
+                        nodes: column.nodes,
+                        selectedNodeID: selectedNodeID,
+                        onSelect: onSelect
                     )
                 }
             }
             .padding(20)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
     }
 }
 
@@ -102,6 +121,8 @@ private struct FileColumnView: View {
     let index: Int
     let filePath: String
     let nodes: [CallGraphNode]
+    let selectedNodeID: String?
+    let onSelect: (CallGraphNode) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -119,7 +140,9 @@ private struct FileColumnView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(nodes) { node in
-                    SymbolCard(node: node)
+                    SymbolCard(node: node, isSelected: node.id == selectedNodeID) {
+                        onSelect(node)
+                    }
                 }
             }
         }
@@ -127,7 +150,7 @@ private struct FileColumnView: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color(nsColor: .windowBackgroundColor))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -138,32 +161,41 @@ private struct FileColumnView: View {
 
 private struct SymbolCard: View {
     let node: CallGraphNode
+    let isSelected: Bool
+    let onTap: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(node.kind.label)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if node.isChanged {
-                    Text("changed")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.orange)
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(node.kind.label)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if node.isChanged {
+                        Text("changed")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.orange)
+                    }
                 }
+                Text(node.symbolName)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text("L\(node.line)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
             }
-            Text(node.symbolName)
-                .font(.callout.weight(.medium))
-                .textSelection(.enabled)
-            Text("L\(node.line)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.tertiary)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.18) : (node.isChanged ? Color.orange.opacity(0.08) : Color.primary.opacity(0.03)))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isSelected ? Color.accentColor.opacity(0.6) : .clear, lineWidth: 1.5)
+            )
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(node.isChanged ? Color.orange.opacity(0.08) : Color.primary.opacity(0.03))
-        )
+        .buttonStyle(.plain)
     }
 }

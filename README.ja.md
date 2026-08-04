@@ -39,8 +39,10 @@
 - **トークン** — Keychain、または空なら `gh auth token`
 - **呼び出し順ファイル列** — PR の patch から import / 宣言を拾うヒューリスティック（Swift · Kotlin · Dart）
 - **Checkout** — `refs/pull/N/head` を落として Xcode / Android Studio を開く
+- **アプリ内 Diff** — シンボルを選ぶと該当 patch hunk を表示
+- **コードジャンプ** — Checkout 後に `file:line` を Xcode / Android Studio / VS Code で開く
 
-これから: tree-sitter 級のシンボルグラフ、アプリ内コードジャンプ、レビューメモ。
+これから: tree-sitter 級のシンボルグラフ、レビューメモ。
 
 ## インストール（ソースから）
 
