@@ -10,7 +10,31 @@
 .vscode/
 .idea/
 
+# Swift
+.build/
+.swiftpm/
+
 # Common build output
 node_modules/
 dist/
 build/
+dist-mas/
+
+# Bundler
+.bundle/
+vendor/
+
+# Local AI-session state
+.claude/worktrees/
+.serena/
+
+# Unpublished drafts
+docs/drafts/
+
+# Local verification artifacts
+.verify-*
+
+prismo-*.png
+
+# Generated icon intermediates (keep AppIcon.icns)
+assets/AppIcon.iconset/
