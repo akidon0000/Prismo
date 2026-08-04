@@ -117,6 +117,14 @@ struct PRDetailView: View {
             .help("該当ブランチを checkout して IDE を開く")
 
             Button {
+                store.copyCallGraphMermaid()
+            } label: {
+                Label("Mermaid", systemImage: "point.3.connected.trianglepath.dotted")
+            }
+            .disabled(store.callGraph == nil || store.callGraph?.nodes.isEmpty == true)
+            .help("呼び出しグラフを Mermaid でコピー")
+
+            Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(pr.url.absoluteString, forType: .string)
                 store.statusMessage = "PR URL をコピーしました"

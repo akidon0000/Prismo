@@ -197,6 +197,13 @@ final class ReviewStore: ObservableObject {
         statusMessage = "メモを Markdown でコピーしました"
     }
 
+    func copyCallGraphMermaid() {
+        guard let graph = callGraph else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(graph.mermaidFlowchart(), forType: .string)
+        statusMessage = "呼び出しグラフを Mermaid でコピーしました"
+    }
+
     func submitNotesToGitHub(settings: AppSettings) async {
         guard var pr = selectedPR else { return }
         let batch = notesForSelectedPR
