@@ -39,8 +39,10 @@ Working slice:
 - **Token** from Keychain, or `gh auth token` when empty
 - **Call-graph columns** from PR file patches (import / declaration heuristics for Swift · Kotlin · Dart)
 - **Checkout** of `refs/pull/N/head` + open Xcode / Android Studio
+- **In-app diff pane** — select a symbol to see its patch hunk
+- **Code jump** — open `file:line` in Xcode / Android Studio / VS Code after checkout
 
-Still ahead: tree-sitter-grade symbol graphs, code jump inside the app, richer review notes.
+Still ahead: tree-sitter-grade symbol graphs, richer review notes.
 
 ## Install (from source)
 

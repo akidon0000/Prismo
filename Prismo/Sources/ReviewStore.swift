@@ -7,16 +7,35 @@ final class ReviewStore: ObservableObject {
     @Published private(set) var pullRequests: [PullRequest] = []
     @Published var selectedPRID: Int?
     @Published private(set) var callGraph: CallGraph?
+    @Published private(set) var pullFiles: [GitHubPullFile] = []
+    @Published var selectedNodeID: String?
     @Published private(set) var isLoading = false
     @Published private(set) var isCheckingOut = false
     @Published var statusMessage: String?
     @Published var lastError: String?
+    /// PR ID → ローカル checkout パス
+    @Published private(set) var checkoutPaths: [Int: String] = [:]
 
     private var loadTask: Task<Void, Never>?
     private var graphTask: Task<Void, Never>?
 
     var selectedPR: PullRequest? {
         pullRequests.first { $0.id == selectedPRID }
+    }
+
+    var selectedNode: CallGraphNode? {
+        guard let id = selectedNodeID else { return nil }
+        return callGraph?.nodes.first { $0.id == id }
+    }
+
+    var selectedFilePatch: String? {
+        guard let node = selectedNode else { return nil }
+        return pullFiles.first { $0.filename == node.filePath }?.patch
+    }
+
+    var focusedDiffLines: [DiffLine] {
+        guard let node = selectedNode else { return [] }
+        return DiffPatchParser.focused(patch: selectedFilePatch, aroundLine: node.line)
     }
 
     func loadInbox(settings: AppSettings) {
@@ -26,7 +45,12 @@ final class ReviewStore: ObservableObject {
 
     func select(_ pr: PullRequest, settings: AppSettings) {
         selectedPRID = pr.id
+        selectedNodeID = nil
         loadCallGraph(for: pr, settings: settings)
+    }
+
+    func selectNode(_ node: CallGraphNode) {
+        selectedNodeID = node.id
     }
 
     func checkoutSelected(settings: AppSettings) async {
@@ -51,12 +75,49 @@ final class ReviewStore: ObservableObject {
                 checkoutRoot: settings.defaultCheckoutRoot,
                 shouldOpenIDE: true
             )
+            checkoutPaths[pr.id] = result.workingDirectory.path
             let ide = result.openedIDE.map { " · \($0)" } ?? ""
             statusMessage = "Checkout 完了: \(result.workingDirectory.path)\(ide)"
         } catch {
             lastError = error.localizedDescription
             statusMessage = "Checkout 失敗"
         }
+    }
+
+    func jumpToSelected(settings: AppSettings) {
+        guard let pr = selectedPR, let node = selectedNode else { return }
+        lastError = nil
+
+        let repoDir: URL
+        if let path = checkoutPaths[pr.id] {
+            repoDir = URL(fileURLWithPath: path)
+        } else if let existing = CodeJumpService.existingCheckout(pr: pr, checkoutRoot: settings.defaultCheckoutRoot) {
+            repoDir = existing
+            checkoutPaths[pr.id] = existing.path
+        } else {
+            lastError = CodeJumpError.noCheckout.localizedDescription
+            statusMessage = "Jump には Checkout が必要です"
+            return
+        }
+
+        do {
+            let ide = try CodeJumpService.jump(
+                filePath: node.filePath,
+                line: node.line,
+                language: Language.infer(fromFilePath: node.filePath) == .unknown ? pr.language : Language.infer(fromFilePath: node.filePath),
+                repoDirectory: repoDir
+            )
+            statusMessage = "Jump · \(ide) · \(node.filePath):\(node.line)"
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Jump 失敗"
+        }
+    }
+
+    func canJump(settings: AppSettings) -> Bool {
+        guard let pr = selectedPR else { return false }
+        if checkoutPaths[pr.id] != nil { return true }
+        return CodeJumpService.existingCheckout(pr: pr, checkoutRoot: settings.defaultCheckoutRoot) != nil
     }
 
     // MARK: - Private
@@ -67,18 +128,12 @@ final class ReviewStore: ObservableObject {
         defer { isLoading = false }
 
         if settings.useDemoData {
-            apply(Self.fixturePRs, preferAssignedFirst: settings.preferAssignedFirst, status: "デモデータ")
-            if let pr = selectedPR {
-                callGraph = Self.fixtureGraph(for: pr.id)
-            }
+            applyDemo(settings: settings, status: "デモデータ")
             return
         }
 
         guard let token = TokenResolver.resolve(settingsToken: settings.githubToken) else {
-            apply(Self.fixturePRs, preferAssignedFirst: settings.preferAssignedFirst, status: "デモデータ（トークン未設定）")
-            if let pr = selectedPR {
-                callGraph = Self.fixtureGraph(for: pr.id)
-            }
+            applyDemo(settings: settings, status: "デモデータ（トークン未設定）")
             lastError = GitHubClientError.missingToken.localizedDescription
             return
         }
@@ -88,8 +143,7 @@ final class ReviewStore: ObservableObject {
             let items = try await client.fetchInbox()
             if Task.isCancelled { return }
             if items.isEmpty {
-                apply(Self.fixturePRs, preferAssignedFirst: settings.preferAssignedFirst, status: "該当 PR なし — デモを表示")
-                if let pr = selectedPR { callGraph = Self.fixtureGraph(for: pr.id) }
+                applyDemo(settings: settings, status: "該当 PR なし — デモを表示")
             } else {
                 apply(items, preferAssignedFirst: settings.preferAssignedFirst, status: "GitHub · \(items.count)件")
                 if let pr = selectedPR {
@@ -99,8 +153,18 @@ final class ReviewStore: ObservableObject {
         } catch {
             if Task.isCancelled { return }
             lastError = error.localizedDescription
-            apply(Self.fixturePRs, preferAssignedFirst: settings.preferAssignedFirst, status: "デモデータ（取得失敗）")
-            if let pr = selectedPR { callGraph = Self.fixtureGraph(for: pr.id) }
+            applyDemo(settings: settings, status: "デモデータ（取得失敗）")
+        }
+    }
+
+    private func applyDemo(settings: AppSettings, status: String) {
+        apply(Self.fixturePRs, preferAssignedFirst: settings.preferAssignedFirst, status: status)
+        if let pr = selectedPR {
+            pullFiles = Self.fixtureFiles(for: pr.id)
+            callGraph = ImportCallGraphBuilder.build(from: pullFiles)
+            if selectedNodeID == nil {
+                selectedNodeID = callGraph?.orderedNodes.first?.id
+            }
         }
     }
 
@@ -120,22 +184,31 @@ final class ReviewStore: ObservableObject {
         statusMessage = status
         if selectedPRID == nil || !sorted.contains(where: { $0.id == selectedPRID }) {
             selectedPRID = sorted.first?.id
+            selectedNodeID = nil
+            pullFiles = []
+            callGraph = nil
         }
     }
 
     private func loadCallGraph(for pr: PullRequest, settings: AppSettings) {
         graphTask?.cancel()
         callGraph = nil
+        pullFiles = []
+        selectedNodeID = nil
 
         if settings.useDemoData || pr.repository.hasPrefix("akidon0000/sample-") {
-            callGraph = Self.fixtureGraph(for: pr.id)
+            pullFiles = Self.fixtureFiles(for: pr.id)
+            callGraph = ImportCallGraphBuilder.build(from: pullFiles)
+            selectedNodeID = callGraph?.orderedNodes.first?.id
             return
         }
 
         graphTask = Task {
             do {
                 guard let token = TokenResolver.resolve(settingsToken: settings.githubToken) else {
-                    callGraph = Self.fixtureGraph(for: pr.id)
+                    pullFiles = Self.fixtureFiles(for: pr.id)
+                    callGraph = ImportCallGraphBuilder.build(from: pullFiles)
+                    selectedNodeID = callGraph?.orderedNodes.first?.id
                     return
                 }
                 let client = GitHubClient(token: token)
@@ -145,7 +218,6 @@ final class ReviewStore: ObservableObject {
                 if Task.isCancelled { return }
 
                 let enriched = enrich(pr, with: d)
-                // 言語を変更ファイルから再推定
                 let lang = f.compactMap { Language.infer(fromFilePath: $0.filename) }
                     .first(where: { $0 != .unknown }) ?? enriched.language
                 let updated = PullRequest(
@@ -166,11 +238,15 @@ final class ReviewStore: ObservableObject {
                     sshURL: enriched.sshURL
                 )
                 replacePR(updated)
+                pullFiles = f
                 callGraph = ImportCallGraphBuilder.build(from: f)
+                selectedNodeID = callGraph?.orderedNodes.first?.id
             } catch {
                 if Task.isCancelled { return }
                 lastError = error.localizedDescription
-                callGraph = Self.fixtureGraph(for: pr.id)
+                pullFiles = Self.fixtureFiles(for: pr.id)
+                callGraph = ImportCallGraphBuilder.build(from: pullFiles)
+                selectedNodeID = callGraph?.orderedNodes.first?.id
             }
         }
     }
@@ -240,60 +316,101 @@ final class ReviewStore: ObservableObject {
         ),
     ]
 
-    private static func fixtureGraph(for prID: Int) -> CallGraph {
+    private static func fixtureFiles(for prID: Int) -> [GitHubPullFile] {
         switch prID {
         case 2:
-            return CallGraph(
-                nodes: [
-                    CallGraphNode(id: "k1", symbolName: "AuthInterceptor.intercept", kind: .method,
-                                  filePath: "app/src/main/java/AuthInterceptor.kt", line: 12,
-                                  isChanged: true, order: 0),
-                    CallGraphNode(id: "k2", symbolName: "TokenStore.refresh", kind: .method,
-                                  filePath: "app/src/main/java/TokenStore.kt", line: 40,
-                                  isChanged: true, order: 1),
-                    CallGraphNode(id: "k3", symbolName: "ApiClient.execute", kind: .method,
-                                  filePath: "app/src/main/java/ApiClient.kt", line: 88,
-                                  isChanged: false, order: 2),
-                ],
-                edges: [
-                    CallGraphEdge(fromID: "k1", toID: "k2"),
-                    CallGraphEdge(fromID: "k2", toID: "k3"),
-                ]
-            )
+            return [
+                GitHubPullFile(
+                    filename: "app/src/main/java/AuthInterceptor.kt",
+                    status: "modified", additions: 5, deletions: 1, changes: 6,
+                    patch: """
+                    @@ -10,3 +10,8 @@ package com.sample
+                     import okhttp3.Interceptor
+                    +import com.sample.TokenStore
+                    +
+                    +class AuthInterceptor(private val tokens: TokenStore) : Interceptor {
+                    +    override fun intercept(chain: Interceptor.Chain) = chain.proceed(chain.request())
+                    +}
+                    """
+                ),
+                GitHubPullFile(
+                    filename: "app/src/main/java/TokenStore.kt",
+                    status: "modified", additions: 4, deletions: 0, changes: 4,
+                    patch: """
+                    @@ -38,0 +40,4 @@ package com.sample
+                    +class TokenStore {
+                    +    fun refresh() {}
+                    +}
+                    """
+                ),
+            ]
         case 3:
-            return CallGraph(
-                nodes: [
-                    CallGraphNode(id: "d1", symbolName: "OnboardingPage", kind: .type,
-                                  filePath: "lib/features/onboarding/onboarding_page.dart", line: 20,
-                                  isChanged: true, order: 0),
-                    CallGraphNode(id: "d2", symbolName: "HeroBanner", kind: .type,
-                                  filePath: "lib/features/onboarding/hero_banner.dart", line: 8,
-                                  isChanged: true, order: 1),
-                ],
-                edges: [CallGraphEdge(fromID: "d1", toID: "d2")]
-            )
+            return [
+                GitHubPullFile(
+                    filename: "lib/features/onboarding/onboarding_page.dart",
+                    status: "modified", additions: 4, deletions: 0, changes: 4,
+                    patch: """
+                    @@ -18,0 +20,4 @@ import 'hero_banner.dart';
+                    +class OnboardingPage extends StatelessWidget {
+                    +  Widget build(context) => HeroBanner();
+                    +}
+                    """
+                ),
+                GitHubPullFile(
+                    filename: "lib/features/onboarding/hero_banner.dart",
+                    status: "added", additions: 3, deletions: 0, changes: 3,
+                    patch: """
+                    @@ -0,0 +1,3 @@
+                    +class HeroBanner extends StatelessWidget {
+                    +  Widget build(context) => const SizedBox();
+                    +}
+                    """
+                ),
+            ]
         default:
-            return CallGraph(
-                nodes: [
-                    CallGraphNode(id: "s1", symbolName: "ReviewInboxView", kind: .type,
-                                  filePath: "Sources/Features/Inbox/ReviewInboxView.swift", line: 42,
-                                  isChanged: true, order: 0),
-                    CallGraphNode(id: "s2", symbolName: "InboxStore", kind: .type,
-                                  filePath: "Sources/Features/Inbox/InboxStore.swift", line: 18,
-                                  isChanged: true, order: 1),
-                    CallGraphNode(id: "s3", symbolName: "GitHubClient", kind: .type,
-                                  filePath: "Sources/GitHub/GitHubClient.swift", line: 77,
-                                  isChanged: true, order: 2),
-                    CallGraphNode(id: "s4", symbolName: "DiskCache", kind: .type,
-                                  filePath: "Sources/Cache/DiskCache.swift", line: 55,
-                                  isChanged: true, order: 3),
-                ],
-                edges: [
-                    CallGraphEdge(fromID: "s1", toID: "s2"),
-                    CallGraphEdge(fromID: "s2", toID: "s3"),
-                    CallGraphEdge(fromID: "s2", toID: "s4"),
-                ]
-            )
+            return [
+                GitHubPullFile(
+                    filename: "Sources/Features/Inbox/ReviewInboxView.swift",
+                    status: "modified", additions: 6, deletions: 0, changes: 6,
+                    patch: """
+                    @@ -40,0 +42,6 @@ import SwiftUI
+                    +import InboxKit
+                    +struct ReviewInboxView: View {
+                    +    var body: some View { Text("inbox") }
+                    +}
+                    """
+                ),
+                GitHubPullFile(
+                    filename: "Sources/Features/Inbox/InboxStore.swift",
+                    status: "modified", additions: 4, deletions: 0, changes: 4,
+                    patch: """
+                    @@ -16,0 +18,4 @@ import Foundation
+                    +final class InboxStore {
+                    +    func refresh() {}
+                    +}
+                    """
+                ),
+                GitHubPullFile(
+                    filename: "Sources/GitHub/GitHubClient.swift",
+                    status: "modified", additions: 3, deletions: 0, changes: 3,
+                    patch: """
+                    @@ -75,0 +77,3 @@ import Foundation
+                    +struct GitHubClient {
+                    +    func fetchAssignedPRs() async {}
+                    +}
+                    """
+                ),
+                GitHubPullFile(
+                    filename: "Sources/Cache/DiskCache.swift",
+                    status: "modified", additions: 3, deletions: 0, changes: 3,
+                    patch: """
+                    @@ -53,0 +55,3 @@ import Foundation
+                    +struct DiskCache {
+                    +    func write() {}
+                    +}
+                    """
+                ),
+            ]
         }
     }
 }
