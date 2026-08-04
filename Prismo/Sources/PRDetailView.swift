@@ -116,6 +116,15 @@ struct PRDetailView: View {
             .help("該当ブランチを checkout して IDE を開く")
 
             Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(pr.url.absoluteString, forType: .string)
+                store.statusMessage = "PR URL をコピーしました"
+            } label: {
+                Label("Copy URL", systemImage: "link")
+            }
+            .help("PR の URL をクリップボードへコピー")
+
+            Button {
                 NSWorkspace.shared.open(pr.url)
             } label: {
                 Label("GitHub", systemImage: "safari")
