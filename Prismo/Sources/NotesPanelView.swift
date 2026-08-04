@@ -83,7 +83,11 @@ struct NotesPanelView: View {
                     }
                 }
 
-                Section("On GitHub") {
+                Section(
+                    store.remoteCommentCountForSelectedFile > 0
+                        ? "On GitHub（選択ファイル \(store.remoteCommentCountForSelectedFile) / 全体 \(store.remoteComments.count)）"
+                        : "On GitHub（\(store.remoteComments.count)）"
+                ) {
                     if store.remoteComments.isEmpty {
                         Text("既存の行コメントはありません")
                             .font(.caption)

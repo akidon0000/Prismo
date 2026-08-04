@@ -576,10 +576,18 @@ final class ReviewStore: ObservableObject {
         }
     }
 
-    /// 選択中シンボルのファイルに紐づく既存コメント。
+    /// 選択中シンボルのファイルに紐づく既存コメント（該当ファイルを先頭に並べる）。
     var remoteCommentsForSelectedFile: [GitHubClient.GitHubReviewComment] {
         guard let path = selectedNode?.filePath else { return remoteComments }
         let matched = remoteComments.filter { $0.path == path }
-        return matched.isEmpty ? remoteComments : matched
+        let others = remoteComments.filter { $0.path != path }
+        // 選択ファイルの議論を先に、残りはその後。件数ゼロでも一覧は残す。
+        return matched + others
+    }
+
+    /// 選択中ファイルに紐づくリモートコメント件数。
+    var remoteCommentCountForSelectedFile: Int {
+        guard let path = selectedNode?.filePath else { return 0 }
+        return remoteComments.filter { $0.path == path }.count
     }
 }
