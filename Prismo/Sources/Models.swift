@@ -96,4 +96,18 @@ struct CallGraph: Sendable {
         }
         return columns.map { (filePath: $0.0, nodes: $0.1) }
     }
+
+    func node(id: String) -> CallGraphNode? {
+        nodes.first { $0.id == id }
+    }
+
+    /// このノードを呼んでいる側（1-hop）。
+    func callers(of id: String) -> [CallGraphNode] {
+        edges.filter { $0.toID == id }.compactMap { node(id: $0.fromID) }
+    }
+
+    /// このノードが呼んでいる側（1-hop）。
+    func callees(of id: String) -> [CallGraphNode] {
+        edges.filter { $0.fromID == id }.compactMap { node(id: $0.toID) }
+    }
 }

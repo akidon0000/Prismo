@@ -22,6 +22,10 @@ final class ReviewStore: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var graphTask: Task<Void, Never>?
 
+    init() {
+        notes = NotesStore.load()
+    }
+
     var selectedPR: PullRequest? {
         pullRequests.first { $0.id == selectedPRID }
     }
@@ -60,6 +64,33 @@ final class ReviewStore: ObservableObject {
 
     func selectNode(_ node: CallGraphNode) {
         selectedNodeID = node.id
+    }
+
+    /// 呼び出し順での隣接シンボルへ移動（delta: +1 次 / -1 前）。
+    func selectAdjacentNode(delta: Int) {
+        guard let graph = callGraph else { return }
+        let ordered = graph.orderedNodes
+        guard !ordered.isEmpty else { return }
+        if let id = selectedNodeID, let index = ordered.firstIndex(where: { $0.id == id }) {
+            let next = (index + delta + ordered.count) % ordered.count
+            selectedNodeID = ordered[next].id
+        } else {
+            selectedNodeID = ordered.first?.id
+        }
+    }
+
+    func filteredPullRequests(query: String, language: Language?) -> [PullRequest] {
+        pullRequests.filter { pr in
+            if let language, pr.language != language { return false }
+            let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !q.isEmpty else { return true }
+            let haystack = "\(pr.title) \(pr.repository) \(pr.author) #\(pr.number)".lowercased()
+            return haystack.contains(q.lowercased())
+        }
+    }
+
+    private func persistNotes() {
+        NotesStore.save(notes)
     }
 
     func checkoutSelected(settings: AppSettings) async {
@@ -143,11 +174,13 @@ final class ReviewStore: ObservableObject {
                 body: trimmed
             )
         )
+        persistNotes()
         statusMessage = "メモを追加 · \(node.symbolName)"
     }
 
     func deleteNote(id: UUID) {
         notes.removeAll { $0.id == id }
+        persistNotes()
     }
 
     func copyNotesMarkdown() {
@@ -195,6 +228,7 @@ final class ReviewStore: ObservableObject {
             statusMessage = "GitHub にレビューを投稿しました"
             // 投稿成功後はクリア（再投稿事故を防ぐ）
             notes.removeAll { $0.pullRequestID == pr.id }
+            persistNotes()
         } catch {
             lastError = error.localizedDescription
             statusMessage = "レビュー投稿に失敗"

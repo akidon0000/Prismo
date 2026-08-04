@@ -41,7 +41,10 @@ Working slice:
 - **Checkout** of `refs/pull/N/head` + open Xcode / Android Studio (reuses `~/ghq/...` when present)
 - **In-app diff pane** — select a symbol to see its patch hunk
 - **Code jump** — open `file:line` in Xcode / Android Studio / VS Code after checkout
-- **Review notes** — attach notes to symbols, copy Markdown, or post a batched GitHub COMMENT review
+- **Review notes** — attach notes to symbols, copy Markdown, or post a batched GitHub COMMENT review (persisted locally)
+- **Blast radius** — 1-hop callers / callees for the selected symbol
+- **Keyboard** — ⌘R refresh, ⌘J/⌘K next/prev symbol, ⌘⇧J jump, ⌘⇧N note
+- **Inbox filter** — search + Swift/Kotlin/Dart language picker
 
 Still ahead: tree-sitter-grade symbol graphs.
 
