@@ -25,6 +25,10 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Diff") {
+                Toggle("長い行を折り返す", isOn: $settings.diffSoftWrap)
+            }
+
             Section("対応言語") {
                 LabeledContent("パーサ") {
                     Text("Swift · Kotlin · Dart")

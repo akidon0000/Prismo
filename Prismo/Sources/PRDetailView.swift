@@ -49,7 +49,8 @@ struct PRDetailView: View {
                                     canJump: store.canJump(settings: settings),
                                     onJump: { store.jumpToSelected(settings: settings) },
                                     onAddNote: { showingAddNote = true },
-                                    canAddNote: store.selectedNode != nil
+                                    canAddNote: store.selectedNode != nil,
+                                    softWrap: settings.diffSoftWrap
                                 )
                                 .frame(minHeight: 180)
 

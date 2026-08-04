@@ -10,6 +10,7 @@ struct DiffPaneView: View {
     let onJump: () -> Void
     var onAddNote: (() -> Void)? = nil
     var canAddNote: Bool = false
+    var softWrap: Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,10 +55,10 @@ struct DiffPaneView: View {
                 )
             } else {
                 ScrollViewReader { proxy in
-                    ScrollView([.vertical, .horizontal]) {
+                    ScrollView(softWrap ? Axis.Set.vertical : [.vertical, .horizontal]) {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(lines) { line in
-                                DiffLineRow(line: line, highlighted: line.newLine == focusLine)
+                                DiffLineRow(line: line, highlighted: line.newLine == focusLine, softWrap: softWrap)
                                     .id(line.id)
                             }
                         }
@@ -93,6 +94,7 @@ struct DiffPaneView: View {
 private struct DiffLineRow: View {
     let line: DiffLine
     let highlighted: Bool
+    var softWrap: Bool = true
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -105,7 +107,9 @@ private struct DiffLineRow: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(foreground)
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(softWrap ? nil : 1)
+                .fixedSize(horizontal: !softWrap, vertical: false)
+                .frame(maxWidth: softWrap ? .infinity : nil, alignment: .leading)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 1)
