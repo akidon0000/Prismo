@@ -7,6 +7,7 @@ struct PrismoApp: App {
     @StateObject private var store = ReviewStore()
     @ObservedObject private var settings = AppSettings.shared
     @State private var showingAbout = false
+    @State private var showingShortcuts = false
 
     var body: some Scene {
         WindowGroup {
@@ -17,8 +18,14 @@ struct PrismoApp: App {
                 .sheet(isPresented: $showingAbout) {
                     AboutView()
                 }
+                .sheet(isPresented: $showingShortcuts) {
+                    ShortcutsHelpView()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .prismoShowAbout)) { _ in
                     showingAbout = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .prismoShowShortcuts)) { _ in
+                    showingShortcuts = true
                 }
         }
         .defaultSize(width: 1200, height: 800)
@@ -61,6 +68,13 @@ struct PrismoApp: App {
                     NotificationCenter.default.post(name: .prismoCopyNotes, object: nil)
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("ショートカット一覧…") {
+                    NotificationCenter.default.post(name: .prismoShowShortcuts, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: [.command])
             }
         }
 
@@ -78,6 +92,7 @@ extension Notification.Name {
     static let prismoAddNote = Notification.Name("prismo.addNote")
     static let prismoCopyNotes = Notification.Name("prismo.copyNotes")
     static let prismoShowAbout = Notification.Name("prismo.showAbout")
+    static let prismoShowShortcuts = Notification.Name("prismo.showShortcuts")
 }
 
 private struct PrismoStoreKey: FocusedValueKey {
