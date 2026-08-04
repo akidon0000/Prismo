@@ -23,8 +23,9 @@ checkout して Xcode / Android Studio で続けられる。対応言語は Swif
 3. **新規パッケージ依存の禁止**：Swift 6 / SwiftUI / macOS 14+、標準 SDK のみ。
    例外はオーナー承認後に `Package.swift` とこの文書へ追記する。
 4. **デモデータを本物と偽らない**：フィクスチャ表示中は UI 上でその旨を示す。
-5. **許可ネットワーク**：`api.github.com`（インボックス / files / PR 詳細）と、
-   ユーザー操作時の `git clone` / `git fetch`（GitHub）のみ。
+5. **許可ネットワーク**：`api.github.com`（インボックス / files / PR 詳細 /
+   レビュー投稿）と、ユーザー操作時の `git clone` / `git fetch`（GitHub）のみ。
+   レビュー投稿はユーザーが明示的に「Post to GitHub」したときだけ。
 
 ## 検証ゲート
 

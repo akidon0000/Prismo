@@ -8,6 +8,8 @@ struct DiffPaneView: View {
     let lines: [DiffLine]
     let canJump: Bool
     let onJump: () -> Void
+    var onAddNote: (() -> Void)? = nil
+    var canAddNote: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +28,13 @@ struct DiffPaneView: View {
                     }
                 }
                 Spacer()
+                if let onAddNote {
+                    Button(action: onAddNote) {
+                        Label("Note", systemImage: "note.text.badge.plus")
+                    }
+                    .disabled(!canAddNote)
+                    .help("このシンボルにレビューメモを付ける")
+                }
                 Button(action: onJump) {
                     Label("Jump", systemImage: "arrow.right.circle")
                 }

@@ -41,8 +41,9 @@
 - **Checkout** — `refs/pull/N/head` を落として Xcode / Android Studio を開く
 - **アプリ内 Diff** — シンボルを選ぶと該当 patch hunk を表示
 - **コードジャンプ** — Checkout 後に `file:line` を Xcode / Android Studio / VS Code で開く
+- **レビューメモ** — シンボルにメモを付け、Markdown コピーまたは GitHub COMMENT レビューとして一括投稿
 
-これから: tree-sitter 級のシンボルグラフ、レビューメモ。
+これから: tree-sitter 級のシンボルグラフ。
 
 ## インストール（ソースから）
 
