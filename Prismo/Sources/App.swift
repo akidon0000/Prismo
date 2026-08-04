@@ -6,6 +6,7 @@ struct PrismoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = ReviewStore()
     @ObservedObject private var settings = AppSettings.shared
+    @State private var showingAbout = false
 
     var body: some Scene {
         WindowGroup {
@@ -13,19 +14,18 @@ struct PrismoApp: App {
                 .frame(minWidth: 960, minHeight: 640)
                 .focusedSceneValue(\.prismoStore, store)
                 .focusedSceneValue(\.prismoSettings, settings)
+                .sheet(isPresented: $showingAbout) {
+                    AboutView()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .prismoShowAbout)) { _ in
+                    showingAbout = true
+                }
         }
         .defaultSize(width: 1200, height: 800)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("Prismo について") {
-                    NSApp.orderFrontStandardAboutPanel(
-                        options: [
-                            .applicationName: "Prismo",
-                            .credits: NSAttributedString(
-                                string: "See the shape of a PR before you read it."
-                            ),
-                        ]
-                    )
+                    NotificationCenter.default.post(name: .prismoShowAbout, object: nil)
                 }
             }
 
@@ -77,6 +77,7 @@ extension Notification.Name {
     static let prismoJump = Notification.Name("prismo.jump")
     static let prismoAddNote = Notification.Name("prismo.addNote")
     static let prismoCopyNotes = Notification.Name("prismo.copyNotes")
+    static let prismoShowAbout = Notification.Name("prismo.showAbout")
 }
 
 private struct PrismoStoreKey: FocusedValueKey {
