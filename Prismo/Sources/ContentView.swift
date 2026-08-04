@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var store: ReviewStore
     @ObservedObject var settings: AppSettings
+    @State private var showingAddNote = false
 
     var body: some View {
         NavigationSplitView {
@@ -10,7 +11,11 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
         } detail: {
             if store.selectedPR != nil {
-                PRDetailView(store: store, settings: settings)
+                PRDetailView(
+                    store: store,
+                    settings: settings,
+                    showingAddNote: $showingAddNote
+                )
             } else {
                 ContentUnavailableView(
                     "PR を選択",
@@ -36,7 +41,7 @@ struct ContentView: View {
                 } label: {
                     Label("更新", systemImage: "arrow.clockwise")
                 }
-                .help("インボックスを再読み込み")
+                .help("インボックスを再読み込み（⌘R）")
                 .disabled(store.isLoading)
             }
         }
@@ -53,6 +58,39 @@ struct ContentView: View {
         }
         .onChange(of: settings.githubToken) { _, _ in
             store.loadInbox(settings: settings)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoRefreshInbox)) { _ in
+            store.loadInbox(settings: settings)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoNextSymbol)) { _ in
+            store.selectAdjacentNode(delta: 1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoPreviousSymbol)) { _ in
+            store.selectAdjacentNode(delta: -1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoJump)) { _ in
+            store.jumpToSelected(settings: settings)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoAddNote)) { _ in
+            guard store.selectedNode != nil else { return }
+            showingAddNote = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoCopyNotes)) { _ in
+            store.copyNotesMarkdown()
+        }
+        .sheet(isPresented: $showingAddNote) {
+            if let node = store.selectedNode {
+                AddNoteSheet(
+                    symbolName: node.symbolName,
+                    filePath: node.filePath,
+                    line: node.line,
+                    onCancel: { showingAddNote = false },
+                    onSave: { text in
+                        store.addNote(body: text)
+                        showingAddNote = false
+                    }
+                )
+            }
         }
     }
 }

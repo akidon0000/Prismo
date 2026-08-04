@@ -4,7 +4,7 @@ import AppKit
 struct PRDetailView: View {
     @ObservedObject var store: ReviewStore
     @ObservedObject var settings: AppSettings
-    @State private var showingAddNote = false
+    @Binding var showingAddNote: Bool
 
     var body: some View {
         Group {
@@ -23,11 +23,21 @@ struct PRDetailView: View {
                         )
                     } else if let graph = store.callGraph {
                         HSplitView {
-                            CallGraphView(
-                                graph: graph,
-                                selectedNodeID: store.selectedNodeID,
-                                onSelect: { store.selectNode($0) }
-                            )
+                            VSplitView {
+                                CallGraphView(
+                                    graph: graph,
+                                    selectedNodeID: store.selectedNodeID,
+                                    onSelect: { store.selectNode($0) }
+                                )
+                                .frame(minHeight: 220)
+
+                                BlastRadiusView(
+                                    graph: graph,
+                                    selectedID: store.selectedNodeID,
+                                    onSelect: { store.selectNode($0) }
+                                )
+                                .frame(minHeight: 120)
+                            }
                             .frame(minWidth: 300)
 
                             VSplitView {
@@ -56,20 +66,6 @@ struct PRDetailView: View {
                             }
                             .frame(minWidth: 360)
                         }
-                    }
-                }
-                .sheet(isPresented: $showingAddNote) {
-                    if let node = store.selectedNode {
-                        AddNoteSheet(
-                            symbolName: node.symbolName,
-                            filePath: node.filePath,
-                            line: node.line,
-                            onCancel: { showingAddNote = false },
-                            onSave: { text in
-                                store.addNote(body: text)
-                                showingAddNote = false
-                            }
-                        )
                     }
                 }
             }

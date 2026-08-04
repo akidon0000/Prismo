@@ -3,6 +3,12 @@ import SwiftUI
 struct PRListView: View {
     @ObservedObject var store: ReviewStore
     @ObservedObject var settings: AppSettings
+    @State private var query = ""
+    @State private var languageFilter: Language? = nil
+
+    private var filtered: [PullRequest] {
+        store.filteredPullRequests(query: query, language: languageFilter)
+    }
 
     var body: some View {
         List(selection: Binding(
@@ -13,13 +19,13 @@ struct PRListView: View {
             }
         )) {
             Section("レビュー依頼（自分）") {
-                ForEach(store.pullRequests.filter(\.isAssignedToMe)) { pr in
+                ForEach(filtered.filter(\.isAssignedToMe)) { pr in
                     PRRow(pr: pr)
                         .tag(pr.id)
                 }
             }
             Section("その他") {
-                ForEach(store.pullRequests.filter { !$0.isAssignedToMe }) { pr in
+                ForEach(filtered.filter { !$0.isAssignedToMe }) { pr in
                     PRRow(pr: pr)
                         .tag(pr.id)
                 }
@@ -27,6 +33,19 @@ struct PRListView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Prismo")
+        .searchable(text: $query, prompt: "タイトル / リポ / 作者")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Picker("言語", selection: $languageFilter) {
+                    Text("すべて").tag(Optional<Language>.none)
+                    ForEach([Language.swift, .kotlin, .dart]) { lang in
+                        Text(lang.label).tag(Optional(lang))
+                    }
+                }
+                .pickerStyle(.menu)
+                .help("言語で絞り込み")
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if let error = store.lastError {
                 Text(error)
