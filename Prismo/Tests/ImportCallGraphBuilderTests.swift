@@ -58,6 +58,34 @@ struct ImportCallGraphBuilderTests {
         #expect(symbols.map(\.name).contains("refresh"))
     }
 
+    @Test("symbol name references create edges even without import")
+    func symbolReferenceEdges() {
+        let files = [
+            GitHubPullFile(
+                filename: "A.swift",
+                status: "modified", additions: 3, deletions: 0, changes: 3,
+                patch: """
+                @@ -1,0 +1,3 @@
+                +struct Caller {
+                +    let store = InboxStore()
+                +}
+                """
+            ),
+            GitHubPullFile(
+                filename: "B.swift",
+                status: "modified", additions: 2, deletions: 0, changes: 2,
+                patch: """
+                @@ -1,0 +1,2 @@
+                +final class InboxStore {
+                +}
+                """
+            ),
+        ]
+        let graph = ImportCallGraphBuilder.build(from: files)
+        #expect(!graph.edges.isEmpty)
+        #expect(graph.orderedNodes.first?.symbolName == "Caller")
+    }
+
     @Test("topologicalFiles puts sources before sinks")
     func topo() {
         let paths = ["B.kt", "A.kt", "C.kt"]

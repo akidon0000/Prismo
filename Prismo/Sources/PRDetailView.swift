@@ -87,6 +87,11 @@ struct PRDetailView: View {
                         .font(.caption.monospaced())
                         .foregroundStyle(.tertiary)
                 }
+                if let graph = store.callGraph {
+                    Text("\(graph.nodes.count) symbols · \(graph.edges.count) edges · \(graph.fileColumns.count) files")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if pr.isAssignedToMe {
