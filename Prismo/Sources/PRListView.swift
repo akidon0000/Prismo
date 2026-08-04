@@ -79,9 +79,18 @@ private struct PRRow: View {
             Text(pr.title)
                 .font(.body.weight(.medium))
                 .lineLimit(2)
-            Text(pr.author)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            HStack(spacing: 6) {
+                Text(pr.author)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.quaternary)
+                Text(pr.updatedAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help(pr.updatedAt.formatted(date: .abbreviated, time: .shortened))
+            }
         }
         .padding(.vertical, 2)
     }
