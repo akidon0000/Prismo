@@ -30,6 +30,13 @@ struct ContentView: View {
                     ProgressView()
                         .controlSize(.small)
                 }
+                if store.selectedPR != nil {
+                    let count = store.notesForSelectedPR.count
+                    Label("\(count)", systemImage: "note.text")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(count > 0 ? Color.primary : Color.secondary)
+                        .help(count > 0 ? "下書きメモ \(count) 件" : "下書きメモなし")
+                }
                 if let message = store.statusMessage {
                     Text(message)
                         .font(.caption)
