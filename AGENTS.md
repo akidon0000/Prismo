@@ -17,12 +17,14 @@ checkout して Xcode / Android Studio で続けられる。対応言語は Swif
 
 1. **レビュー対象コードを勝手に外に出さない**：PR の diff・ソース・トークンを、
    ユーザーが明示していない外部サービスへ送らない。GitHub API へのリクエストは
-   ユーザー設定のトークンでの認証に限る。
+   ユーザー設定のトークン（または `gh auth token`）での認証に限る。
 2. **トークンは慎重に**：GitHub PAT をログ・Analytics・コミットに載せない。
-   将来は Keychain へ移す。
+   保存先は Keychain（`KeychainStore`）のみ。
 3. **新規パッケージ依存の禁止**：Swift 6 / SwiftUI / macOS 14+、標準 SDK のみ。
    例外はオーナー承認後に `Package.swift` とこの文書へ追記する。
 4. **デモデータを本物と偽らない**：フィクスチャ表示中は UI 上でその旨を示す。
+5. **許可ネットワーク**：`api.github.com`（インボックス / files / PR 詳細）と、
+   ユーザー操作時の `git clone` / `git fetch`（GitHub）のみ。
 
 ## 検証ゲート
 

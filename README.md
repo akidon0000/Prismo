@@ -33,7 +33,14 @@ Inspired by [rinkaku](https://github.com/hiro-o918/rinkaku)'s “see the shape b
 
 ## Status
 
-Early scaffold. The UI runs on fixture data; GitHub API, tree-sitter extraction, checkout, and IDE launch are next.
+Working slice:
+
+- **Inbox** via GitHub search (`review-requested` / `assignee` / `involves`), falling back to demo data when unauthenticated
+- **Token** from Keychain, or `gh auth token` when empty
+- **Call-graph columns** from PR file patches (import / declaration heuristics for Swift · Kotlin · Dart)
+- **Checkout** of `refs/pull/N/head` + open Xcode / Android Studio
+
+Still ahead: tree-sitter-grade symbol graphs, code jump inside the app, richer review notes.
 
 ## Install (from source)
 

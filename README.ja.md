@@ -33,7 +33,14 @@
 
 ## 現状
 
-スキャフォールド段階。UI はデモデータで動く。GitHub API・tree-sitter 抽出・checkout・IDE 起動はこれから。
+動く範囲:
+
+- **インボックス** — GitHub 検索（`review-requested` / `assignee` / `involves`）。未認証時はデモデータ
+- **トークン** — Keychain、または空なら `gh auth token`
+- **呼び出し順ファイル列** — PR の patch から import / 宣言を拾うヒューリスティック（Swift · Kotlin · Dart）
+- **Checkout** — `refs/pull/N/head` を落として Xcode / Android Studio を開く
+
+これから: tree-sitter 級のシンボルグラフ、アプリ内コードジャンプ、レビューメモ。
 
 ## インストール（ソースから）
 

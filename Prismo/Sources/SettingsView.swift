@@ -6,10 +6,11 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("GitHub") {
-                SecureField("Personal Access Token", text: $settings.githubToken)
-                Text("repo と read:user スコープが必要です。トークンは Keychain へ移す予定です。")
+                SecureField("Personal Access Token（任意）", text: $settings.githubToken)
+                Text("空のときは `gh auth token` を使います。スコープは repo（プライベート）と read:user。トークンは Keychain に保存します。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("デモデータを使う", isOn: $settings.useDemoData)
             }
 
             Section("インボックス") {
@@ -18,7 +19,7 @@ struct SettingsView: View {
 
             Section("Checkout") {
                 TextField("クローン親ディレクトリ", text: $settings.defaultCheckoutRoot)
-                Text("空の場合は一時ディレクトリを使います。実装は後続です。")
+                Text("空の場合は一時ディレクトリ（~/…/PrismoCheckouts）を使います。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -27,9 +28,12 @@ struct SettingsView: View {
                 LabeledContent("パーサ") {
                     Text("Swift · Kotlin · Dart")
                 }
+                Text("現状は import / 宣言のヒューリスティック。tree-sitter 連携は後続。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 360)
+        .frame(width: 520, height: 420)
     }
 }

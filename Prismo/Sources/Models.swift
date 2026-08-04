@@ -29,11 +29,17 @@ struct PullRequest: Identifiable, Hashable, Sendable {
     let number: Int
     let title: String
     let repository: String
+    let owner: String
+    let name: String
     let author: String
     let url: URL
     let isAssignedToMe: Bool
     let language: Language
     let updatedAt: Date
+    let headRef: String?
+    let headSHA: String?
+    let cloneURL: String
+    let sshURL: String
 }
 
 /// 呼び出しグラフ上の 1 ノード（変更されたシンボル、またはその近傍）。

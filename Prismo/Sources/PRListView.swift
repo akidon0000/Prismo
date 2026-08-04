@@ -2,13 +2,14 @@ import SwiftUI
 
 struct PRListView: View {
     @ObservedObject var store: ReviewStore
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         List(selection: Binding(
             get: { store.selectedPRID },
             set: { id in
                 guard let id, let pr = store.pullRequests.first(where: { $0.id == id }) else { return }
-                store.select(pr)
+                store.select(pr, settings: settings)
             }
         )) {
             Section("レビュー依頼（自分）") {
@@ -26,6 +27,15 @@ struct PRListView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Prismo")
+        .safeAreaInset(edge: .bottom) {
+            if let error = store.lastError {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }
 

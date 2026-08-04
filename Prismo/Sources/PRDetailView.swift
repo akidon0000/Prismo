@@ -3,6 +3,7 @@ import AppKit
 
 struct PRDetailView: View {
     @ObservedObject var store: ReviewStore
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         Group {
@@ -11,7 +12,15 @@ struct PRDetailView: View {
                     header(pr)
                     Divider()
                     if let graph = store.callGraph {
-                        CallGraphView(graph: graph)
+                        if graph.nodes.isEmpty {
+                            ContentUnavailableView(
+                                "変更ファイルなし",
+                                systemImage: "doc",
+                                description: Text("この PR に表示できるコード変更がありません。")
+                            )
+                        } else {
+                            CallGraphView(graph: graph)
+                        }
                     } else {
                         ProgressView("呼び出しグラフを構築中…")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -31,6 +40,11 @@ struct PRDetailView: View {
                 Text("#\(pr.number)  \(pr.title)")
                     .font(.title3.weight(.semibold))
                     .lineLimit(2)
+                if let head = pr.headRef {
+                    Text(head)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
             }
             Spacer()
             if pr.isAssignedToMe {
@@ -41,12 +55,17 @@ struct PRDetailView: View {
                     .background(.tint.opacity(0.15), in: Capsule())
             }
             Button {
-                // 後続: ブランチ checkout + Xcode / Android Studio を開く
+                Task { await store.checkoutSelected(settings: settings) }
             } label: {
-                Label("Checkout", systemImage: "arrow.down.doc")
+                if store.isCheckingOut {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Label("Checkout", systemImage: "arrow.down.doc")
+                }
             }
-            .disabled(true)
-            .help("該当ブランチを checkout（実装予定）")
+            .disabled(store.isCheckingOut || pr.repository.hasPrefix("akidon0000/sample-"))
+            .help("該当ブランチを checkout して IDE を開く")
 
             Button {
                 NSWorkspace.shared.open(pr.url)
@@ -69,8 +88,7 @@ struct CallGraphView: View {
                     FileColumnView(
                         index: index,
                         filePath: column.filePath,
-                        nodes: column.nodes,
-                        edges: graph.edges
+                        nodes: column.nodes
                     )
                 }
             }
@@ -84,7 +102,6 @@ private struct FileColumnView: View {
     let index: Int
     let filePath: String
     let nodes: [CallGraphNode]
-    let edges: [CallGraphEdge]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
