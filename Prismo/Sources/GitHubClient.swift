@@ -120,7 +120,64 @@ actor GitHubClient {
         try await get(path: "/repos/\(owner)/\(repo)/pulls/\(number)/files?per_page=100")
     }
 
+    /// メモをまとめて 1 件の PR レビュー（COMMENT）として投稿する。
+    @discardableResult
+    func submitReviewComments(
+        owner: String,
+        repo: String,
+        number: Int,
+        commitID: String,
+        body: String,
+        notes: [ReviewNote]
+    ) async throws -> GitHubReviewResponse {
+        struct Comment: Encodable {
+            let path: String
+            let line: Int
+            let side: String
+            let body: String
+        }
+        struct Payload: Encodable {
+            let commitID: String
+            let body: String
+            let event: String
+            let comments: [Comment]
+
+            enum CodingKeys: String, CodingKey {
+                case body, event, comments
+                case commitID = "commit_id"
+            }
+        }
+
+        let comments = notes.map {
+            Comment(
+                path: $0.filePath,
+                line: max($0.line, 1),
+                side: "RIGHT",
+                body: "**\($0.symbolName)**\n\n\($0.body)"
+            )
+        }
+        let payload = Payload(
+            commitID: commitID,
+            body: body,
+            event: "COMMENT",
+            comments: comments
+        )
+        return try await post(
+            path: "/repos/\(owner)/\(repo)/pulls/\(number)/reviews",
+            body: payload
+        )
+    }
+
     // MARK: - Private
+
+    struct GitHubReviewResponse: Decodable, Sendable {
+        let id: Int
+        let htmlURL: String?
+        enum CodingKeys: String, CodingKey {
+            case id
+            case htmlURL = "html_url"
+        }
+    }
 
     private struct SearchResponse: Decodable {
         let items: [SearchItem]
@@ -184,7 +241,7 @@ actor GitHubClient {
             URLQueryItem(name: "order", value: "desc"),
             URLQueryItem(name: "per_page", value: "50"),
         ]
-        let response: SearchResponse = try await get(url: components.url!)
+        let response: SearchResponse = try await send(url: components.url!, method: "GET", body: nil as Data?)
         return response.items.filter { $0.pullRequest != nil }
     }
 
@@ -192,15 +249,28 @@ actor GitHubClient {
         guard let url = URL(string: "https://api.github.com\(path)") else {
             throw GitHubClientError.invalidURL
         }
-        return try await get(url: url)
+        return try await send(url: url, method: "GET", body: nil as Data?)
     }
 
-    private func get<T: Decodable>(url: URL) async throws -> T {
+    private func post<Body: Encodable, T: Decodable>(path: String, body: Body) async throws -> T {
+        guard let url = URL(string: "https://api.github.com\(path)") else {
+            throw GitHubClientError.invalidURL
+        }
+        let data = try JSONEncoder().encode(body)
+        return try await send(url: url, method: "POST", body: data)
+    }
+
+    private func send<T: Decodable>(url: URL, method: String, body: Data?) async throws -> T {
         var request = URLRequest(url: url)
+        request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("PrismoMacOS", forHTTPHeaderField: "User-Agent")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
 
         let (data, response) = try await session.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0

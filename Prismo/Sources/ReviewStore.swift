@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 /// PR 一覧と選択中 PR の呼び出しグラフを保持する。
 @MainActor
@@ -9,8 +10,10 @@ final class ReviewStore: ObservableObject {
     @Published private(set) var callGraph: CallGraph?
     @Published private(set) var pullFiles: [GitHubPullFile] = []
     @Published var selectedNodeID: String?
+    @Published private(set) var notes: [ReviewNote] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isCheckingOut = false
+    @Published private(set) var isSubmittingNotes = false
     @Published var statusMessage: String?
     @Published var lastError: String?
     /// PR ID → ローカル checkout パス
@@ -36,6 +39,12 @@ final class ReviewStore: ObservableObject {
     var focusedDiffLines: [DiffLine] {
         guard let node = selectedNode else { return [] }
         return DiffPatchParser.focused(patch: selectedFilePatch, aroundLine: node.line)
+    }
+
+    var notesForSelectedPR: [ReviewNote] {
+        guard let id = selectedPRID else { return [] }
+        return notes.filter { $0.pullRequestID == id }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     func loadInbox(settings: AppSettings) {
@@ -118,6 +127,78 @@ final class ReviewStore: ObservableObject {
         guard let pr = selectedPR else { return false }
         if checkoutPaths[pr.id] != nil { return true }
         return CodeJumpService.existingCheckout(pr: pr, checkoutRoot: settings.defaultCheckoutRoot) != nil
+    }
+
+    func addNote(body: String) {
+        guard let pr = selectedPR, let node = selectedNode else { return }
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        notes.append(
+            ReviewNote(
+                pullRequestID: pr.id,
+                nodeID: node.id,
+                symbolName: node.symbolName,
+                filePath: node.filePath,
+                line: node.line,
+                body: trimmed
+            )
+        )
+        statusMessage = "メモを追加 · \(node.symbolName)"
+    }
+
+    func deleteNote(id: UUID) {
+        notes.removeAll { $0.id == id }
+    }
+
+    func copyNotesMarkdown() {
+        guard let pr = selectedPR else { return }
+        let md = ReviewNoteExporter.markdown(for: notesForSelectedPR, pr: pr)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(md, forType: .string)
+        statusMessage = "メモを Markdown でコピーしました"
+    }
+
+    func submitNotesToGitHub(settings: AppSettings) async {
+        guard var pr = selectedPR else { return }
+        let batch = notesForSelectedPR
+        guard !batch.isEmpty else { return }
+
+        isSubmittingNotes = true
+        lastError = nil
+        defer { isSubmittingNotes = false }
+
+        do {
+            guard let token = TokenResolver.resolve(settingsToken: settings.githubToken) else {
+                throw GitHubClientError.missingToken
+            }
+            let client = GitHubClient(token: token)
+            if pr.headSHA == nil {
+                let detail = try await client.fetchPullDetail(owner: pr.owner, repo: pr.name, number: pr.number)
+                pr = enrich(pr, with: detail)
+                replacePR(pr)
+            }
+            guard let sha = pr.headSHA, !sha.isEmpty else {
+                throw GitHubClientError.http(400, "commit SHA を取得できませんでした")
+            }
+
+            let response = try await client.submitReviewComments(
+                owner: pr.owner,
+                repo: pr.name,
+                number: pr.number,
+                commitID: sha,
+                body: "Reviewed with Prismo (\(batch.count) notes)",
+                notes: batch
+            )
+            if let url = response.htmlURL, let link = URL(string: url) {
+                NSWorkspace.shared.open(link)
+            }
+            statusMessage = "GitHub にレビューを投稿しました"
+            // 投稿成功後はクリア（再投稿事故を防ぐ）
+            notes.removeAll { $0.pullRequestID == pr.id }
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "レビュー投稿に失敗"
+        }
     }
 
     // MARK: - Private

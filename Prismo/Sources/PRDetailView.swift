@@ -4,6 +4,7 @@ import AppKit
 struct PRDetailView: View {
     @ObservedObject var store: ReviewStore
     @ObservedObject var settings: AppSettings
+    @State private var showingAddNote = false
 
     var body: some View {
         Group {
@@ -27,18 +28,48 @@ struct PRDetailView: View {
                                 selectedNodeID: store.selectedNodeID,
                                 onSelect: { store.selectNode($0) }
                             )
-                            .frame(minWidth: 360)
+                            .frame(minWidth: 300)
 
-                            DiffPaneView(
-                                filePath: store.selectedNode?.filePath,
-                                symbolName: store.selectedNode?.symbolName,
-                                focusLine: store.selectedNode?.line ?? 1,
-                                lines: store.focusedDiffLines,
-                                canJump: store.canJump(settings: settings),
-                                onJump: { store.jumpToSelected(settings: settings) }
-                            )
-                            .frame(minWidth: 320)
+                            VSplitView {
+                                DiffPaneView(
+                                    filePath: store.selectedNode?.filePath,
+                                    symbolName: store.selectedNode?.symbolName,
+                                    focusLine: store.selectedNode?.line ?? 1,
+                                    lines: store.focusedDiffLines,
+                                    canJump: store.canJump(settings: settings),
+                                    onJump: { store.jumpToSelected(settings: settings) },
+                                    onAddNote: { showingAddNote = true },
+                                    canAddNote: store.selectedNode != nil
+                                )
+                                .frame(minHeight: 180)
+
+                                NotesPanelView(
+                                    store: store,
+                                    onCopy: { store.copyNotesMarkdown() },
+                                    onSubmit: {
+                                        Task { await store.submitNotesToGitHub(settings: settings) }
+                                    },
+                                    isSubmitting: store.isSubmittingNotes,
+                                    canSubmit: !pr.repository.hasPrefix("akidon0000/sample-")
+                                )
+                                .frame(minHeight: 120)
+                            }
+                            .frame(minWidth: 360)
                         }
+                    }
+                }
+                .sheet(isPresented: $showingAddNote) {
+                    if let node = store.selectedNode {
+                        AddNoteSheet(
+                            symbolName: node.symbolName,
+                            filePath: node.filePath,
+                            line: node.line,
+                            onCancel: { showingAddNote = false },
+                            onSave: { text in
+                                store.addNote(body: text)
+                                showingAddNote = false
+                            }
+                        )
                     }
                 }
             }

@@ -41,8 +41,9 @@ Working slice:
 - **Checkout** of `refs/pull/N/head` + open Xcode / Android Studio
 - **In-app diff pane** — select a symbol to see its patch hunk
 - **Code jump** — open `file:line` in Xcode / Android Studio / VS Code after checkout
+- **Review notes** — attach notes to symbols, copy Markdown, or post a batched GitHub COMMENT review
 
-Still ahead: tree-sitter-grade symbol graphs, richer review notes.
+Still ahead: tree-sitter-grade symbol graphs.
 
 ## Install (from source)
 
