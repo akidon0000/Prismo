@@ -13,6 +13,7 @@ final class AppSettings: ObservableObject {
         static let defaultCheckoutRoot = "defaultCheckoutRoot"
         static let useDemoData = "useDemoData"
         static let showAssignedOnly = "showAssignedOnly"
+        static let diffSoftWrap = "diffSoftWrap"
         static let legacyToken = "githubToken" // UserDefaults からの移行用
     }
 
@@ -41,6 +42,11 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(showAssignedOnly, forKey: Key.showAssignedOnly) }
     }
 
+    /// Diff 行を折り返して表示する。
+    @Published var diffSoftWrap: Bool {
+        didSet { defaults.set(diffSoftWrap, forKey: Key.diffSoftWrap) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -59,5 +65,6 @@ final class AppSettings: ObservableObject {
         self.defaultCheckoutRoot = defaults.string(forKey: Key.defaultCheckoutRoot) ?? ""
         self.useDemoData = defaults.object(forKey: Key.useDemoData) as? Bool ?? false
         self.showAssignedOnly = defaults.object(forKey: Key.showAssignedOnly) as? Bool ?? false
+        self.diffSoftWrap = defaults.object(forKey: Key.diffSoftWrap) as? Bool ?? true
     }
 }
