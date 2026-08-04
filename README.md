@@ -48,16 +48,19 @@ Working slice:
 
 Still ahead: tree-sitter-grade symbol graphs.
 
-## Install (from source)
+## Install
+
+- **DMG (after first release):** [Prismo-latest.dmg](https://github.com/akidon0000/Prismo/releases/latest/download/Prismo-latest.dmg)
+- **Download page:** GitHub Pages (`Site/`, published by `.github/workflows/pages.yml`)
+
+### From source
 
 ```bash
 git clone git@github.com:akidon0000/Prismo.git
 cd Prismo
-bash scripts/setup.sh          # git hooks
-swift assets/make-icon.swift   # optional AppIcon.icns
-bash scripts/build.sh          # release → /Applications/Prismo.app
-# or:
-bash scripts/build.sh --debug
+bash scripts/setup.sh
+swift assets/make-icon.swift   # optional
+bash scripts/build.sh          # → /Applications/Prismo.app
 ```
 
 Requirements: macOS 14+, Xcode with Swift 6 toolchain.
@@ -67,9 +70,20 @@ Requirements: macOS 14+, Xcode with Swift 6 toolchain.
 ```bash
 swift test
 swift build -c release
+bash scripts/ui-preview.sh /tmp/ui-preview   # DEBUG screenshots
+bash scripts/screenshot.sh                   # README + Site hero PNG
+(cd Site && swift run)                       # download page → Site/Build
 ```
 
-Sources live under [`Prismo/Sources/`](Prismo/Sources/). See [`AGENTS.md`](AGENTS.md) for working agreements.
+Label a PR with `ui-preview 📸` to post rendered screens in the conversation.
+
+### Release
+
+1. Run **Bump version** (Actions) → merge the PR (`versions/macos`)
+2. **Release** builds a universal DMG and publishes a GitHub Release
+3. Optional secrets for Developer ID + notarization: `DEVELOPER_ID_P12`, `DEVELOPER_ID_P12_PASSWORD`, `APP_STORE_CONNECT_*`
+
+Sources live under [`Prismo/Sources/`](Prismo/Sources/). See [`AGENTS.md`](AGENTS.md).
 
 ## License
 

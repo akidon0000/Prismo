@@ -48,26 +48,39 @@
 
 これから: tree-sitter 級のシンボルグラフ。
 
-## インストール（ソースから）
+## インストール
+
+- **DMG（初回リリース後）:** [Prismo-latest.dmg](https://github.com/akidon0000/Prismo/releases/latest/download/Prismo-latest.dmg)
+- **ダウンロードページ:** GitHub Pages（`Site/`、`pages.yml` が公開）
+
+### ソースから
 
 ```bash
 git clone git@github.com:akidon0000/Prismo.git
 cd Prismo
 bash scripts/setup.sh
-swift assets/make-icon.swift   # 任意
-bash scripts/build.sh          # → /Applications/Prismo.app
+bash scripts/build.sh
 ```
-
-要件: macOS 14 以上、Swift 6 ツールチェーン付き Xcode。
 
 ## 開発
 
 ```bash
 swift test
 swift build -c release
+bash scripts/ui-preview.sh /tmp/ui-preview
+bash scripts/screenshot.sh
+(cd Site && swift run)
 ```
 
-ソースは [`Prismo/Sources/`](Prismo/Sources/)。作業合意は [`AGENTS.md`](AGENTS.md)。
+PR に `ui-preview 📸` ラベルを付けると、実 UI のスクショがコメントに貼られる。
+
+### リリース
+
+1. Actions の **Bump version** → PR をマージ（`versions/macos`）
+2. **Release** がユニバーサル DMG を GitHub Releases へ出す
+3. 署名・公証は任意 secrets（`DEVELOPER_ID_P12` など）
+
+詳細は [`AGENTS.md`](AGENTS.md)。
 
 ## ライセンス
 

@@ -27,6 +27,11 @@ final class ReviewStore: ObservableObject {
         notes = NotesStore.load()
     }
 
+    /// スクリーンショット / ui-preview 用にデモデータを同期ロードする。
+    func loadDemoForPreview() {
+        applyDemo(settings: AppSettings.shared, status: "デモデータ")
+    }
+
     var selectedPR: PullRequest? {
         pullRequests.first { $0.id == selectedPRID }
     }

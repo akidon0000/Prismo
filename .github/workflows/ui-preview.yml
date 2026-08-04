@@ -1,0 +1,161 @@
+name: UI Preview
+
+# ui-preview 📸 ラベルで inbox / detail / settings を実 UI からレンダリングし PR コメントへ貼る。
+# ScreenshotRenderer.allScreens() と ORDER / screen_title を同じ PR で同期すること。
+
+on:
+  pull_request:
+    types: [labeled, closed]
+
+concurrency:
+  group: ui-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Render & publish preview
+    if: github.event.action == 'labeled' && github.event.label.name == 'ui-preview 📸'
+    runs-on: macos-15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Render screens
+        run: bash scripts/ui-preview.sh /tmp/ui-preview
+
+      - name: Publish preview images and comment
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BRANCH="ui-preview-images"
+          SHORT_SHA="${PR_SHA:0:7}"
+
+          screen_title() {
+            case "$1" in
+              inbox) echo "インボックス（ダーク）" ;;
+              inbox-light) echo "インボックス（ライト）" ;;
+              detail) echo "PR 詳細（呼び出しグラフ + Diff）" ;;
+              settings) echo "設定" ;;
+              *) echo "$1" ;;
+            esac
+          }
+          ORDER=(inbox inbox-light detail settings)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin "$BRANCH" 2>/dev/null || true
+          if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+            git switch -C "$BRANCH" "origin/$BRANCH"
+          else
+            git switch --orphan "$BRANCH"
+            git rm -rf . > /dev/null 2>&1 || true
+          fi
+
+          rm -f "pr-${PR_NUMBER}"-*.png
+
+          cell_html() {
+            printf '<td width="50%%" valign="top"><p><strong>%s</strong></p><p><a href="%s"><img src="%s" alt="%s" width="400"></a></p><p><a href="%s">原寸を開く</a></p></td>' \
+              "$1" "$2" "$2" "$3" "$2"
+          }
+
+          TITLES=()
+          URLS=()
+          ALTS=()
+          for screen in "${ORDER[@]}"; do
+            SRC="/tmp/ui-preview/${screen}.png"
+            [ -f "$SRC" ] || continue
+            IMAGE_NAME="pr-${PR_NUMBER}-${SHORT_SHA}-${screen}.png"
+            cp "$SRC" "$IMAGE_NAME"
+            IMAGE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/${IMAGE_NAME}"
+            TITLES+=("$(screen_title "$screen")")
+            URLS+=("$IMAGE_URL")
+            ALTS+=("$screen")
+          done
+
+          BODY=$(printf '<!-- ui-preview-bot -->\n### 🖼 UI Preview\n\nRendered at `%s` by `scripts/ui-preview.sh`.\n\n<table>' "$SHORT_SHA")
+          i=0
+          count=${#URLS[@]}
+          while [ "$i" -lt "$count" ]; do
+            BODY="${BODY}"$'\n<tr>\n'
+            BODY="${BODY}$(cell_html "${TITLES[$i]}" "${URLS[$i]}" "${ALTS[$i]}")"
+            i=$((i + 1))
+            if [ "$i" -lt "$count" ]; then
+              BODY="${BODY}$(cell_html "${TITLES[$i]}" "${URLS[$i]}" "${ALTS[$i]}")"
+              i=$((i + 1))
+            else
+              BODY="${BODY}<td></td>"
+            fi
+            BODY="${BODY}"$'\n</tr>'
+          done
+          BODY="${BODY}"$'\n</table>'
+
+          rm -rf .build .swiftpm
+          shopt -s nullglob
+          pngs=("pr-${PR_NUMBER}-${SHORT_SHA}-"*.png)
+          if [ ${#pngs[@]} -eq 0 ]; then
+            echo "no preview PNGs to publish" >&2
+            exit 1
+          fi
+          git add -- "${pngs[@]}"
+          git commit -m "chore: ui preview for PR #${PR_NUMBER} (${SHORT_SHA})"
+          git push origin "$BRANCH"
+
+          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.body | startswith("<!-- ui-preview-bot -->"))][0].id // empty')
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -f body="$BODY" > /dev/null
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$BODY" > /dev/null
+          fi
+
+  cleanup:
+    name: Remove preview image on close
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove this PR's preview image
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          BRANCH="ui-preview-images"
+
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1; then
+            echo "no $BRANCH branch, nothing to clean up"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$BRANCH"
+          git switch -C "$BRANCH" "origin/$BRANCH"
+
+          shopt -s nullglob
+          matches=("pr-${PR_NUMBER}"-*.png)
+          if [ ${#matches[@]} -eq 0 ]; then
+            echo "no preview image for PR #${PR_NUMBER}"
+            exit 0
+          fi
+          git rm -f "${matches[@]}"
+          git commit -m "chore: remove ui preview for PR #${PR_NUMBER}"
+
+          if [ -z "$(git ls-tree -r HEAD --name-only)" ]; then
+            git push origin --delete "$BRANCH"
+          else
+            git push origin "$BRANCH"
+          fi
