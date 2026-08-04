@@ -14,6 +14,11 @@
 .build/
 .swiftpm/
 
+# Ignite static site output
+Site/Build/
+Site/.build/
+Site/.swiftpm/
+
 # Common build output
 node_modules/
 dist/

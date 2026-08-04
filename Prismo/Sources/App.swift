@@ -3,6 +3,7 @@ import AppKit
 
 @main
 struct PrismoApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = ReviewStore()
     @ObservedObject private var settings = AppSettings.shared
 
