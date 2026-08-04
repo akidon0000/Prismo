@@ -14,7 +14,20 @@ final class AppSettings: ObservableObject {
         static let useDemoData = "useDemoData"
         static let showAssignedOnly = "showAssignedOnly"
         static let diffSoftWrap = "diffSoftWrap"
+        static let appearance = "appearance"
         static let legacyToken = "githubToken" // UserDefaults からの移行用
+    }
+
+    enum Appearance: String, CaseIterable, Identifiable {
+        case system, light, dark
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .system: return "システム"
+            case .light: return "ライト"
+            case .dark: return "ダーク"
+            }
+        }
     }
 
     /// GitHub Personal Access Token。空なら `gh auth token` へフォールバック。
@@ -47,6 +60,11 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(diffSoftWrap, forKey: Key.diffSoftWrap) }
     }
 
+    /// 外観（システム / ライト / ダーク）。
+    @Published var appearance: Appearance {
+        didSet { defaults.set(appearance.rawValue, forKey: Key.appearance) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -66,5 +84,10 @@ final class AppSettings: ObservableObject {
         self.useDemoData = defaults.object(forKey: Key.useDemoData) as? Bool ?? false
         self.showAssignedOnly = defaults.object(forKey: Key.showAssignedOnly) as? Bool ?? false
         self.diffSoftWrap = defaults.object(forKey: Key.diffSoftWrap) as? Bool ?? true
+        if let raw = defaults.string(forKey: Key.appearance), let value = Appearance(rawValue: raw) {
+            self.appearance = value
+        } else {
+            self.appearance = .system
+        }
     }
 }

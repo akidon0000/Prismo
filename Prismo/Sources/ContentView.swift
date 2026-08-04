@@ -5,6 +5,14 @@ struct ContentView: View {
     @ObservedObject var settings: AppSettings
     @State private var showingAddNote = false
 
+    private var colorScheme: ColorScheme? {
+        switch settings.appearance {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
     var body: some View {
         NavigationSplitView {
             PRListView(store: store, settings: settings)
@@ -52,6 +60,7 @@ struct ContentView: View {
                 .disabled(store.isLoading)
             }
         }
+        .preferredColorScheme(colorScheme)
         .onAppear {
             if store.pullRequests.isEmpty {
                 store.loadInbox(settings: settings)

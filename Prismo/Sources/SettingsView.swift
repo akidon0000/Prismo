@@ -25,6 +25,15 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("外観") {
+                Picker("テーマ", selection: $settings.appearance) {
+                    ForEach(AppSettings.Appearance.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("Diff") {
                 Toggle("長い行を折り返す", isOn: $settings.diffSoftWrap)
             }
