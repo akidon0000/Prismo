@@ -38,7 +38,7 @@
 - **インボックス** — GitHub 検索（`review-requested` / `assignee` / `involves`）。未認証時はデモデータ
 - **トークン** — Keychain、または空なら `gh auth token`
 - **呼び出し順ファイル列** — PR の patch から import / 宣言を拾うヒューリスティック（Swift · Kotlin · Dart）
-- **Checkout** — `refs/pull/N/head` を落として Xcode / Android Studio を開く
+- **Checkout** — `refs/pull/N/head` を落として Xcode / Android Studio を開く（`~/ghq/...` があれば再利用）
 - **アプリ内 Diff** — シンボルを選ぶと該当 patch hunk を表示
 - **コードジャンプ** — Checkout 後に `file:line` を Xcode / Android Studio / VS Code で開く
 - **レビューメモ** — シンボルにメモを付け、Markdown コピーまたは GitHub COMMENT レビューとして一括投稿

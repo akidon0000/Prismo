@@ -31,26 +31,25 @@ enum CheckoutService {
             throw CheckoutServiceError.missingHeadRef
         }
 
-        let root = resolveRoot(checkoutRoot)
-        let repoDir = root
-            .appendingPathComponent(pr.owner)
-            .appendingPathComponent(pr.name)
-
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-
-        if FileManager.default.fileExists(atPath: repoDir.path) {
-            _ = try await run(in: repoDir, ["/usr/bin/git", "fetch", "origin", "+refs/pull/\(pr.number)/head:prismo/pr-\(pr.number)"])
-            _ = try await run(in: repoDir, ["/usr/bin/git", "checkout", "prismo/pr-\(pr.number)"])
+        let repoDir: URL
+        if let existing = LocalRepoLocator.find(owner: pr.owner, name: pr.name, checkoutRoot: checkoutRoot) {
+            repoDir = existing
         } else {
-            // shallow clone + fetch PR ref
+            let root = resolveRoot(checkoutRoot)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            repoDir = root
+                .appendingPathComponent(pr.owner)
+                .appendingPathComponent(pr.name)
             let cloneURL = pr.sshURL.isEmpty ? pr.cloneURL : pr.sshURL
             _ = try await run(
                 in: root,
                 ["/usr/bin/git", "clone", "--depth", "1", cloneURL, "\(pr.owner)/\(pr.name)"]
             )
-            _ = try await run(in: repoDir, ["/usr/bin/git", "fetch", "origin", "+refs/pull/\(pr.number)/head:prismo/pr-\(pr.number)"])
-            _ = try await run(in: repoDir, ["/usr/bin/git", "checkout", "prismo/pr-\(pr.number)"])
         }
+
+        // 作業ツリーを汚しすぎないよう専用 ref に載せる
+        _ = try await run(in: repoDir, ["/usr/bin/git", "fetch", "origin", "+refs/pull/\(pr.number)/head:prismo/pr-\(pr.number)"])
+        _ = try await run(in: repoDir, ["/usr/bin/git", "checkout", "prismo/pr-\(pr.number)"])
 
         var opened: String?
         if shouldOpenIDE {

@@ -38,7 +38,7 @@ Working slice:
 - **Inbox** via GitHub search (`review-requested` / `assignee` / `involves`), falling back to demo data when unauthenticated
 - **Token** from Keychain, or `gh auth token` when empty
 - **Call-graph columns** from PR file patches (import / declaration heuristics for Swift · Kotlin · Dart)
-- **Checkout** of `refs/pull/N/head` + open Xcode / Android Studio
+- **Checkout** of `refs/pull/N/head` + open Xcode / Android Studio (reuses `~/ghq/...` when present)
 - **In-app diff pane** — select a symbol to see its patch hunk
 - **Code jump** — open `file:line` in Xcode / Android Studio / VS Code after checkout
 - **Review notes** — attach notes to symbols, copy Markdown, or post a batched GitHub COMMENT review

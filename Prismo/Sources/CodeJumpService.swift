@@ -46,10 +46,7 @@ enum CodeJumpService {
     }
 
     static func existingCheckout(pr: PullRequest, checkoutRoot: String) -> URL? {
-        let dir = CheckoutService.resolveRoot(checkoutRoot)
-            .appendingPathComponent(pr.owner)
-            .appendingPathComponent(pr.name)
-        return FileManager.default.fileExists(atPath: dir.path) ? dir : nil
+        LocalRepoLocator.find(owner: pr.owner, name: pr.name, checkoutRoot: checkoutRoot)
     }
 
     private static func launchXed(file: URL, line: Int) -> Bool {
