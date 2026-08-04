@@ -20,7 +20,7 @@ enum GitHubClientError: LocalizedError {
     }
 }
 
-struct GitHubUser: Decodable, Sendable {
+struct GitHubUser: Decodable, Sendable, Hashable {
     let login: String
 }
 
@@ -118,6 +118,25 @@ actor GitHubClient {
 
     func fetchPullFiles(owner: String, repo: String, number: Int) async throws -> [GitHubPullFile] {
         try await get(path: "/repos/\(owner)/\(repo)/pulls/\(number)/files?per_page=100")
+    }
+
+    /// 行コメント（レビューコメント）を取得する。
+    func fetchPullReviewComments(owner: String, repo: String, number: Int) async throws -> [GitHubReviewComment] {
+        try await get(path: "/repos/\(owner)/\(repo)/pulls/\(number)/comments?per_page=100")
+    }
+
+    struct GitHubReviewComment: Decodable, Identifiable, Sendable, Hashable {
+        let id: Int
+        let path: String?
+        let line: Int?
+        let body: String
+        let user: GitHubUser?
+        let htmlURL: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, path, line, body, user
+            case htmlURL = "html_url"
+        }
     }
 
     /// メモをまとめて 1 件の PR レビュー（COMMENT）として投稿する。

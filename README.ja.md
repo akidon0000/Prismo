@@ -41,7 +41,7 @@
 - **Checkout** — `refs/pull/N/head` を落として Xcode / Android Studio を開く（`~/ghq/...` があれば再利用）
 - **アプリ内 Diff** — シンボルを選ぶと該当 patch hunk を表示
 - **コードジャンプ** — Checkout 後に `file:line` を Xcode / Android Studio / VS Code で開く
-- **レビューメモ** — シンボルにメモを付け、Markdown コピーまたは GitHub COMMENT レビューとして一括投稿（ローカル永続化）
+- **レビューメモ** — シンボルにメモを付け、Markdown コピーまたは GitHub COMMENT レビューとして一括投稿（ローカル永続化）。既存の行コメントも表示
 - **Blast radius** — 選択シンボルの呼び出し元 / 先（1-hop）
 - **キーボード** — ⌘R 更新、⌘J/⌘K 次/前シンボル、⌘⇧J Jump、⌘⇧N メモ
 - **インボックス絞り込み** — 検索 + Swift/Kotlin/Dart
