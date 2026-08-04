@@ -5,6 +5,7 @@ struct PRListView: View {
     @ObservedObject var settings: AppSettings
     @State private var query = ""
     @State private var languageFilter: Language? = nil
+    @State private var otherExpanded = false
 
     private var filtered: [PullRequest] {
         let base = store.filteredPullRequests(query: query, language: languageFilter)
@@ -13,6 +14,9 @@ struct PRListView: View {
         }
         return base
     }
+
+    private var assigned: [PullRequest] { filtered.filter(\.isAssignedToMe) }
+    private var others: [PullRequest] { filtered.filter { !$0.isAssignedToMe } }
 
     var body: some View {
         List(selection: Binding(
@@ -23,13 +27,13 @@ struct PRListView: View {
             }
         )) {
             Section("レビュー依頼（自分）") {
-                ForEach(filtered.filter(\.isAssignedToMe)) { pr in
+                ForEach(assigned) { pr in
                     PRRow(pr: pr)
                         .tag(pr.id)
                 }
             }
-            Section("その他") {
-                ForEach(filtered.filter { !$0.isAssignedToMe }) { pr in
+            Section("その他", isExpanded: $otherExpanded) {
+                ForEach(others) { pr in
                     PRRow(pr: pr)
                         .tag(pr.id)
                 }
@@ -38,6 +42,12 @@ struct PRListView: View {
         .listStyle(.sidebar)
         .navigationTitle("Prismo")
         .searchable(text: $query, prompt: "タイトル / リポ / 作者")
+        .onAppear {
+            otherExpanded = assigned.isEmpty
+        }
+        .onChange(of: assigned.count) { _, count in
+            if count > 0 { otherExpanded = false }
+        }
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Toggle(isOn: $settings.showAssignedOnly) {
