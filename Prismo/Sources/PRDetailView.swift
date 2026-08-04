@@ -27,6 +27,7 @@ struct PRDetailView: View {
                                 CallGraphView(
                                     graph: graph,
                                     selectedNodeID: store.selectedNodeID,
+                                    commentedPaths: Set(store.remoteComments.compactMap(\.path)),
                                     onSelect: { store.selectNode($0) }
                                 )
                                 .frame(minHeight: 220)
@@ -138,6 +139,7 @@ struct PRDetailView: View {
 struct CallGraphView: View {
     let graph: CallGraph
     let selectedNodeID: String?
+    var commentedPaths: Set<String> = []
     let onSelect: (CallGraphNode) -> Void
 
     var body: some View {
@@ -149,6 +151,7 @@ struct CallGraphView: View {
                         filePath: column.filePath,
                         nodes: column.nodes,
                         selectedNodeID: selectedNodeID,
+                        hasComments: commentedPaths.contains(column.filePath),
                         onSelect: onSelect
                     )
                 }
@@ -164,6 +167,7 @@ private struct FileColumnView: View {
     let filePath: String
     let nodes: [CallGraphNode]
     let selectedNodeID: String?
+    var hasComments: Bool = false
     let onSelect: (CallGraphNode) -> Void
 
     var body: some View {
@@ -177,12 +181,22 @@ private struct FileColumnView: View {
                 Text(filePath.split(separator: "/").last.map(String.init) ?? filePath)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
+                if hasComments {
+                    Image(systemName: "bubble.left.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.blue)
+                        .help("このファイルに既存コメントあり")
+                }
             }
             .help(filePath)
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(nodes) { node in
-                    SymbolCard(node: node, isSelected: node.id == selectedNodeID) {
+                    SymbolCard(
+                        node: node,
+                        isSelected: node.id == selectedNodeID,
+                        hasComments: hasComments
+                    ) {
                         onSelect(node)
                     }
                 }
@@ -204,6 +218,7 @@ private struct FileColumnView: View {
 private struct SymbolCard: View {
     let node: CallGraphNode
     let isSelected: Bool
+    var hasComments: Bool = false
     let onTap: () -> Void
 
     var body: some View {
@@ -214,6 +229,11 @@ private struct SymbolCard: View {
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
                     Spacer()
+                    if hasComments {
+                        Image(systemName: "bubble.left")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
                     if node.isChanged {
                         Text("changed")
                             .font(.caption2.weight(.medium))
