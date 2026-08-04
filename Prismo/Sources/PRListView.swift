@@ -7,7 +7,11 @@ struct PRListView: View {
     @State private var languageFilter: Language? = nil
 
     private var filtered: [PullRequest] {
-        store.filteredPullRequests(query: query, language: languageFilter)
+        let base = store.filteredPullRequests(query: query, language: languageFilter)
+        if settings.showAssignedOnly {
+            return base.filter(\.isAssignedToMe)
+        }
+        return base
     }
 
     var body: some View {
@@ -35,6 +39,13 @@ struct PRListView: View {
         .navigationTitle("Prismo")
         .searchable(text: $query, prompt: "タイトル / リポ / 作者")
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Toggle(isOn: $settings.showAssignedOnly) {
+                    Image(systemName: settings.showAssignedOnly ? "person.fill.checkmark" : "person.2")
+                }
+                .toggleStyle(.button)
+                .help(settings.showAssignedOnly ? "アサイン済みのみ表示中" : "すべて表示中")
+            }
             ToolbarItem(placement: .automatic) {
                 Picker("言語", selection: $languageFilter) {
                     Text("すべて").tag(Optional<Language>.none)

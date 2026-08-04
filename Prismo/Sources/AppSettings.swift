@@ -12,6 +12,7 @@ final class AppSettings: ObservableObject {
         static let preferAssignedFirst = "preferAssignedFirst"
         static let defaultCheckoutRoot = "defaultCheckoutRoot"
         static let useDemoData = "useDemoData"
+        static let showAssignedOnly = "showAssignedOnly"
         static let legacyToken = "githubToken" // UserDefaults からの移行用
     }
 
@@ -35,6 +36,11 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(useDemoData, forKey: Key.useDemoData) }
     }
 
+    /// アサイン済み PR だけを一覧に表示する。
+    @Published var showAssignedOnly: Bool {
+        didSet { defaults.set(showAssignedOnly, forKey: Key.showAssignedOnly) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -52,5 +58,6 @@ final class AppSettings: ObservableObject {
         self.preferAssignedFirst = defaults.object(forKey: Key.preferAssignedFirst) as? Bool ?? true
         self.defaultCheckoutRoot = defaults.string(forKey: Key.defaultCheckoutRoot) ?? ""
         self.useDemoData = defaults.object(forKey: Key.useDemoData) as? Bool ?? false
+        self.showAssignedOnly = defaults.object(forKey: Key.showAssignedOnly) as? Bool ?? false
     }
 }

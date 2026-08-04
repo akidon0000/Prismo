@@ -15,6 +15,7 @@ struct SettingsView: View {
 
             Section("インボックス") {
                 Toggle("アサイン済みを先頭に表示", isOn: $settings.preferAssignedFirst)
+                Toggle("アサイン済みのみ表示", isOn: $settings.showAssignedOnly)
             }
 
             Section("Checkout") {
