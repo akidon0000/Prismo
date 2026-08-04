@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct NotesPanelView: View {
     @ObservedObject var store: ReviewStore
@@ -10,8 +11,12 @@ struct NotesPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Notes (\(store.notesForSelectedPR.count))", systemImage: "note.text")
-                    .font(.caption.weight(.semibold))
+                Label(
+                    "Notes (\(store.notesForSelectedPR.count)) · GitHub (\(store.remoteComments.count))",
+                    systemImage: "note.text"
+                )
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
                 Spacer()
                 Button("Copy MD", action: onCopy)
                     .disabled(store.notesForSelectedPR.isEmpty)
@@ -32,39 +37,79 @@ struct NotesPanelView: View {
 
             Divider()
 
-            if store.notesForSelectedPR.isEmpty {
-                Text("シンボルを選んでメモを追加")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(store.notesForSelectedPR) { note in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(note.symbolName)
-                                .font(.caption.weight(.semibold))
-                            Text("\(note.filePath):\(note.line)")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                            Text(note.body)
-                                .font(.callout)
-                                .textSelection(.enabled)
+            List {
+                Section("Draft") {
+                    if store.notesForSelectedPR.isEmpty {
+                        Text("シンボルを選んでメモを追加")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(store.notesForSelectedPR) { note in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(note.symbolName)
+                                    .font(.caption.weight(.semibold))
+                                Text("\(note.filePath):\(note.line)")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.secondary)
+                                Text(note.body)
+                                    .font(.callout)
+                                    .textSelection(.enabled)
+                            }
+                            .padding(.vertical, 2)
+                            .contextMenu {
+                                Button("削除", role: .destructive) {
+                                    store.deleteNote(id: note.id)
+                                }
+                            }
                         }
-                        .padding(.vertical, 2)
-                        .contextMenu {
-                            Button("削除", role: .destructive) {
-                                store.deleteNote(id: note.id)
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                store.deleteNote(id: store.notesForSelectedPR[index].id)
                             }
                         }
                     }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            store.deleteNote(id: store.notesForSelectedPR[index].id)
+                }
+
+                Section("On GitHub") {
+                    if store.remoteComments.isEmpty {
+                        Text("既存の行コメントはありません")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(store.remoteCommentsForSelectedFile) { comment in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(comment.user?.login ?? "unknown")
+                                        .font(.caption.weight(.semibold))
+                                    Spacer()
+                                    if let line = comment.line {
+                                        Text("L\(line)")
+                                            .font(.caption2.monospaced())
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                if let path = comment.path {
+                                    Text(path)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Text(comment.body)
+                                    .font(.callout)
+                                    .textSelection(.enabled)
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if let url = comment.htmlURL.flatMap(URL.init(string:)) {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            }
                         }
                     }
                 }
-                .listStyle(.plain)
             }
+            .listStyle(.plain)
         }
     }
 }

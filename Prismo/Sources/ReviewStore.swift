@@ -9,6 +9,7 @@ final class ReviewStore: ObservableObject {
     @Published var selectedPRID: Int?
     @Published private(set) var callGraph: CallGraph?
     @Published private(set) var pullFiles: [GitHubPullFile] = []
+    @Published private(set) var remoteComments: [GitHubClient.GitHubReviewComment] = []
     @Published var selectedNodeID: String?
     @Published private(set) var notes: [ReviewNote] = []
     @Published private(set) var isLoading = false
@@ -276,6 +277,7 @@ final class ReviewStore: ObservableObject {
         apply(Self.fixturePRs, preferAssignedFirst: settings.preferAssignedFirst, status: status)
         if let pr = selectedPR {
             pullFiles = Self.fixtureFiles(for: pr.id)
+            remoteComments = Self.fixtureComments(for: pr.id)
             callGraph = ImportCallGraphBuilder.build(from: pullFiles)
             if selectedNodeID == nil {
                 selectedNodeID = callGraph?.orderedNodes.first?.id
@@ -301,6 +303,7 @@ final class ReviewStore: ObservableObject {
             selectedPRID = sorted.first?.id
             selectedNodeID = nil
             pullFiles = []
+            remoteComments = []
             callGraph = nil
         }
     }
@@ -309,10 +312,12 @@ final class ReviewStore: ObservableObject {
         graphTask?.cancel()
         callGraph = nil
         pullFiles = []
+        remoteComments = []
         selectedNodeID = nil
 
         if settings.useDemoData || pr.repository.hasPrefix("akidon0000/sample-") {
             pullFiles = Self.fixtureFiles(for: pr.id)
+            remoteComments = Self.fixtureComments(for: pr.id)
             callGraph = ImportCallGraphBuilder.build(from: pullFiles)
             selectedNodeID = callGraph?.orderedNodes.first?.id
             return
@@ -322,6 +327,7 @@ final class ReviewStore: ObservableObject {
             do {
                 guard let token = TokenResolver.resolve(settingsToken: settings.githubToken) else {
                     pullFiles = Self.fixtureFiles(for: pr.id)
+                    remoteComments = Self.fixtureComments(for: pr.id)
                     callGraph = ImportCallGraphBuilder.build(from: pullFiles)
                     selectedNodeID = callGraph?.orderedNodes.first?.id
                     return
@@ -329,7 +335,8 @@ final class ReviewStore: ObservableObject {
                 let client = GitHubClient(token: token)
                 async let detail = client.fetchPullDetail(owner: pr.owner, repo: pr.name, number: pr.number)
                 async let files = client.fetchPullFiles(owner: pr.owner, repo: pr.name, number: pr.number)
-                let (d, f) = try await (detail, files)
+                async let comments = client.fetchPullReviewComments(owner: pr.owner, repo: pr.name, number: pr.number)
+                let (d, f, c) = try await (detail, files, comments)
                 if Task.isCancelled { return }
 
                 let enriched = enrich(pr, with: d)
@@ -354,12 +361,14 @@ final class ReviewStore: ObservableObject {
                 )
                 replacePR(updated)
                 pullFiles = f
+                remoteComments = c
                 callGraph = ImportCallGraphBuilder.build(from: f)
                 selectedNodeID = callGraph?.orderedNodes.first?.id
             } catch {
                 if Task.isCancelled { return }
                 lastError = error.localizedDescription
                 pullFiles = Self.fixtureFiles(for: pr.id)
+                remoteComments = Self.fixtureComments(for: pr.id)
                 callGraph = ImportCallGraphBuilder.build(from: pullFiles)
                 selectedNodeID = callGraph?.orderedNodes.first?.id
             }
@@ -527,5 +536,30 @@ final class ReviewStore: ObservableObject {
                 ),
             ]
         }
+    }
+
+    private static func fixtureComments(for prID: Int) -> [GitHubClient.GitHubReviewComment] {
+        switch prID {
+        case 1:
+            return [
+                GitHubClient.GitHubReviewComment(
+                    id: 9001,
+                    path: "Sources/Features/Inbox/InboxStore.swift",
+                    line: 18,
+                    body: "キャッシュ無効化のタイミングも書いてほしい",
+                    user: GitHubUser(login: "reviewer"),
+                    htmlURL: "https://github.com/akidon0000/sample-ios/pull/128#discussion_r1"
+                )
+            ]
+        default:
+            return []
+        }
+    }
+
+    /// 選択中シンボルのファイルに紐づく既存コメント。
+    var remoteCommentsForSelectedFile: [GitHubClient.GitHubReviewComment] {
+        guard let path = selectedNode?.filePath else { return remoteComments }
+        let matched = remoteComments.filter { $0.path == path }
+        return matched.isEmpty ? remoteComments : matched
     }
 }
