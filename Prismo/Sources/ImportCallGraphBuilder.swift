@@ -49,28 +49,51 @@ enum ImportCallGraphBuilder {
             }
         }
 
-        // ファイル A が B のモジュール/ファイル名を import していれば A → B
-        var edges: [CallGraphEdge] = []
+        // 辺: import 一致 + 追加行内のシンボル名参照
+        var edgeSet = Set<CallGraphEdge>()
         let paths = target.map(\.filename)
+        let symbolsByFile = Dictionary(grouping: nodes, by: \.filePath)
+        let allSymbolNames = Set(nodes.map(\.symbolName).filter { $0.count >= 3 })
+
         for from in paths {
             let imports = fileImports[from] ?? []
+            let addedText = addedLinesText(from: target.first(where: { $0.filename == from })?.patch)
+            let fromNodes = symbolsByFile[from] ?? []
+
             for to in paths where to != from {
                 let stem = stemName(to)
-                let moduleHints = moduleHints(for: to)
-                if imports.contains(where: { imp in
+                let hints = moduleHints(for: to)
+                let importHit = imports.contains(where: { imp in
                     let lower = imp.lowercased()
                     return lower.contains(stem.lowercased())
-                        || moduleHints.contains(where: { lower.contains($0.lowercased()) })
-                }) {
-                    // 呼び出し元ファイルの先頭ノード → 呼び出し先ファイルの先頭ノード
-                    if let fromID = nodes.first(where: { $0.filePath == from })?.id,
-                       let toID = nodes.first(where: { $0.filePath == to })?.id {
-                        edges.append(CallGraphEdge(fromID: fromID, toID: toID))
+                        || hints.contains(where: { lower.contains($0.lowercased()) })
+                })
+
+                let toSymbols = symbolsByFile[to] ?? []
+                let referenced = toSymbols.filter { sym in
+                    allSymbolNames.contains(sym.symbolName)
+                        && containsSymbolReference(addedText, symbol: sym.symbolName)
+                }
+
+                if importHit || !referenced.isEmpty {
+                    // シンボル同士が分かればそれを、なければファイル先頭同士
+                    if let fromNode = fromNodes.first {
+                        if referenced.isEmpty, let toNode = toSymbols.first {
+                            edgeSet.insert(CallGraphEdge(fromID: fromNode.id, toID: toNode.id))
+                        } else {
+                            for toNode in referenced {
+                                edgeSet.insert(CallGraphEdge(fromID: fromNode.id, toID: toNode.id))
+                            }
+                            if referenced.isEmpty, let toNode = toSymbols.first {
+                                edgeSet.insert(CallGraphEdge(fromID: fromNode.id, toID: toNode.id))
+                            }
+                        }
                     }
                 }
             }
         }
 
+        let edges = Array(edgeSet)
         let orderedPaths = topologicalFiles(paths: paths, edges: edges, nodes: nodes)
         var remapped: [CallGraphNode] = []
         var nextOrder = 0
@@ -213,6 +236,25 @@ enum ImportCallGraphBuilder {
     private static func moduleHints(for path: String) -> [String] {
         let parts = path.split(separator: "/").map(String.init)
         return parts.suffix(3).map { ($0 as NSString).deletingPathExtension }
+    }
+
+    /// patch の追加行だけを連結したテキスト。
+    static func addedLinesText(from patch: String?) -> String {
+        guard let patch else { return "" }
+        return patch
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.hasPrefix("+") && !$0.hasPrefix("+++") }
+            .map { String($0.dropFirst()) }
+            .joined(separator: "\n")
+    }
+
+    /// 単語境界付きでシンボル名が出現するか。
+    static func containsSymbolReference(_ text: String, symbol: String) -> Bool {
+        guard symbol.count >= 2 else { return false }
+        let escaped = NSRegularExpression.escapedPattern(for: symbol)
+        guard let re = try? NSRegularExpression(pattern: "\\b\(escaped)\\b") else { return false }
+        let range = NSRange(text.startIndex..., in: text)
+        return re.firstMatch(in: text, range: range) != nil
     }
 
     /// 呼び出し元が先になるようファイルを並べる。辺が無ければパス順ではなく入力順を保つ。
