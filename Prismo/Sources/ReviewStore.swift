@@ -17,6 +17,8 @@ final class ReviewStore: ObservableObject {
     @Published private(set) var isSubmittingNotes = false
     @Published var statusMessage: String?
     @Published var lastError: String?
+    /// インボックスを最後に読み込んだ時刻。
+    @Published private(set) var inboxUpdatedAt: Date?
     /// PR ID → ローカル checkout パス
     @Published private(set) var checkoutPaths: [Int: String] = [:]
 
@@ -314,7 +316,9 @@ final class ReviewStore: ObservableObject {
             sorted.sort { $0.updatedAt > $1.updatedAt }
         }
         pullRequests = sorted
-        statusMessage = status
+        inboxUpdatedAt = Date()
+        let time = inboxUpdatedAt!.formatted(date: .omitted, time: .shortened)
+        statusMessage = "\(status) · \(time)"
         if selectedPRID == nil || !sorted.contains(where: { $0.id == selectedPRID }) {
             selectedPRID = sorted.first?.id
             selectedNodeID = nil
