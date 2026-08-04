@@ -7,6 +7,7 @@ struct NotesPanelView: View {
     let onSubmit: () -> Void
     let isSubmitting: Bool
     let canSubmit: Bool
+    @State private var confirmingPost = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +22,7 @@ struct NotesPanelView: View {
                 Button("Copy MD", action: onCopy)
                     .disabled(store.notesForSelectedPR.isEmpty)
                 Button {
-                    onSubmit()
+                    confirmingPost = true
                 } label: {
                     if isSubmitting {
                         ProgressView().controlSize(.small)
@@ -31,6 +32,18 @@ struct NotesPanelView: View {
                 }
                 .disabled(!canSubmit || store.notesForSelectedPR.isEmpty || isSubmitting)
                 .help("COMMENT レビューとして一括投稿")
+                .confirmationDialog(
+                    "GitHub に投稿しますか？",
+                    isPresented: $confirmingPost,
+                    titleVisibility: .visible
+                ) {
+                    Button("投稿する (\(store.notesForSelectedPR.count)件)") {
+                        onSubmit()
+                    }
+                    Button("キャンセル", role: .cancel) {}
+                } message: {
+                    Text("COMMENT レビューとして \(store.notesForSelectedPR.count) 件のメモを投稿します。投稿後、ローカルの下書きはクリアされます。")
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
