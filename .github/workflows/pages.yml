@@ -21,7 +21,7 @@ jobs:
     name: Build site
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build download page
         working-directory: Site
