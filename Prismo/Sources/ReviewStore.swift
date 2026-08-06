@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import AppKit
 
 /// PR 一覧と選択中 PR の呼び出しグラフを保持する。
 @MainActor
@@ -9,36 +8,19 @@ final class ReviewStore: ObservableObject {
     @Published var selectedPRID: Int?
     @Published private(set) var callGraph: CallGraph?
     @Published private(set) var pullFiles: [GitHubPullFile] = []
-    @Published private(set) var remoteComments: [GitHubClient.GitHubReviewComment] = []
     @Published var selectedNodeID: String?
-    @Published private(set) var notes: [ReviewNote] = []
     @Published private(set) var isLoading = false
-    @Published private(set) var isCheckingOut = false
-    @Published private(set) var isSubmittingNotes = false
     @Published var statusMessage: String?
     @Published var lastError: String?
     /// インボックスを最後に読み込んだ時刻。
     @Published private(set) var inboxUpdatedAt: Date?
-    /// PR ID → ローカル checkout パス
-    @Published private(set) var checkoutPaths: [Int: String] = [:]
-    /// 呼び出し先/元の候補ピッカー（複数ヒット時）。
-    @Published var jumpPicker: SymbolJumpPicker?
-    /// 右ペイン切替リクエスト（Blast など）。
-    @Published var rightPaneRequest: RightPaneKind?
-    /// jumplist 変更の購読用（canJumpBack/Forward の再描画）。
-    @Published private(set) var jumpNavigationEpoch = 0
 
     private var loadTask: Task<Void, Never>?
     private var graphTask: Task<Void, Never>?
-    private var jumpList = SymbolJumpList()
-
-    init() {
-        notes = NotesStore.load()
-    }
 
     /// スクリーンショット / ui-preview 用にデモデータを同期ロードする。
     func loadDemoForPreview() {
-        applyDemo(settings: AppSettings.shared, status: "デモデータ")
+        applyDemo(status: "デモデータ")
     }
 
     var selectedPR: PullRequest? {
@@ -60,25 +42,6 @@ final class ReviewStore: ObservableObject {
         return DiffPatchParser.focused(patch: selectedFilePatch, aroundLine: node.line)
     }
 
-    var notesForSelectedPR: [ReviewNote] {
-        guard let id = selectedPRID else { return [] }
-        return notes.filter { $0.pullRequestID == id }
-            .sorted { $0.createdAt < $1.createdAt }
-    }
-
-    var callersOfSelected: [CallGraphNode] {
-        guard let id = selectedNodeID, let graph = callGraph else { return [] }
-        return graph.callers(of: id)
-    }
-
-    var calleesOfSelected: [CallGraphNode] {
-        guard let id = selectedNodeID, let graph = callGraph else { return [] }
-        return graph.callees(of: id)
-    }
-
-    var canJumpBack: Bool { jumpList.canGoBack }
-    var canJumpForward: Bool { jumpList.canGoForward }
-
     func loadInbox(settings: AppSettings) {
         loadTask?.cancel()
         loadTask = Task { await reloadInbox(settings: settings) }
@@ -87,14 +50,12 @@ final class ReviewStore: ObservableObject {
     func select(_ pr: PullRequest, settings: AppSettings) {
         selectedPRID = pr.id
         selectedNodeID = nil
-        jumpPicker = nil
-        jumpList.clear()
-        rightPaneRequest = nil
         loadCallGraph(for: pr, settings: settings)
     }
 
     func selectNode(_ node: CallGraphNode) {
-        navigateToNode(node, recordJump: true)
+        guard callGraph?.node(id: node.id) != nil else { return }
+        selectedNodeID = node.id
     }
 
     /// 呼び出し順での隣接シンボルへ移動（delta: +1 次 / -1 前）。
@@ -104,323 +65,9 @@ final class ReviewStore: ObservableObject {
         guard !ordered.isEmpty else { return }
         if let id = selectedNodeID, let index = ordered.firstIndex(where: { $0.id == id }) {
             let next = (index + delta + ordered.count) % ordered.count
-            navigateToNode(ordered[next], recordJump: true)
+            selectedNodeID = ordered[next].id
         } else if let first = ordered.first {
-            navigateToNode(first, recordJump: false)
-        }
-    }
-
-    /// 呼び出し先へ（rinkaku `gd`）。0件はステータス、1件は即移動、複数はピッカー。
-    func jumpToCallees() {
-        resolveSymbolJump(kind: .callees)
-    }
-
-    /// 呼び出し元へ（rinkaku `gr`）。
-    func jumpToCallers() {
-        resolveSymbolJump(kind: .callers)
-    }
-
-    func chooseJumpCandidate(_ node: CallGraphNode) {
-        let kind = jumpPicker?.kind
-        jumpPicker = nil
-        navigateToNode(node, recordJump: true)
-        let label = kind?.statusLabel ?? "jump"
-        statusMessage = "\(label) · \(node.symbolName)"
-        showDiffPane()
-    }
-
-    func cancelJumpPicker() {
-        jumpPicker = nil
-    }
-
-    func jumpBack() {
-        guard let id = jumpList.back(), let node = callGraph?.node(id: id) else {
-            statusMessage = "これ以上戻れません"
-            return
-        }
-        selectedNodeID = node.id
-        bumpJumpNavigation()
-        statusMessage = "← \(node.symbolName)"
-    }
-
-    func jumpForward() {
-        guard let id = jumpList.forward(), let node = callGraph?.node(id: id) else {
-            statusMessage = "これ以上進めません"
-            return
-        }
-        selectedNodeID = node.id
-        bumpJumpNavigation()
-        statusMessage = "→ \(node.symbolName)"
-    }
-
-    func showBlastPane() {
-        rightPaneRequest = .blast
-        let callers = callersOfSelected.count
-        let callees = calleesOfSelected.count
-        statusMessage = "blast · callers:\(callers) callees:\(callees)"
-    }
-
-    func showDiffPane() {
-        rightPaneRequest = .diff
-    }
-
-    /// 差分内でリンク化できるシンボル名（選択中シンボル自身は除く）。
-    var linkableSymbolNames: Set<String> {
-        guard let graph = callGraph else { return [] }
-        var names = Set(graph.nodes.map(\.symbolName))
-        if let current = selectedNode?.symbolName {
-            names.remove(current)
-        }
-        return names
-    }
-
-    /// 差分内のシンボル名タップからの定義ジャンプ。
-    /// 1件は即移動、複数は変更ありを優先した候補ピッカーを出す。
-    func jumpToSymbolNamed(_ name: String) {
-        guard let graph = callGraph else { return }
-        let candidates = graph.nodes
-            .filter { $0.symbolName == name }
-            .sorted {
-                if $0.isChanged != $1.isChanged { return $0.isChanged }
-                return $0.order < $1.order
-            }
-        switch candidates.count {
-        case 0:
-            statusMessage = "\(name) はこの PR のグラフにありません"
-        case 1:
-            navigateToNode(candidates[0], recordJump: true)
-            statusMessage = "jump · \(name)"
-            showDiffPane()
-        default:
-            jumpPicker = SymbolJumpPicker(
-                kind: .symbol,
-                originID: selectedNodeID ?? candidates[0].id,
-                candidates: candidates
-            )
-            statusMessage = "\(name) · \(candidates.count)件から選択"
-        }
-    }
-
-    private func resolveSymbolJump(kind: SymbolJumpKind) {
-        guard let origin = selectedNode else {
-            statusMessage = "先にシンボルを選択してください"
-            return
-        }
-        let candidates: [CallGraphNode]
-        switch kind {
-        case .callees: candidates = calleesOfSelected
-        case .callers: candidates = callersOfSelected
-        case .symbol: return // 名前ジャンプは jumpToSymbolNamed(_:) が担当
-        }
-
-        switch candidates.count {
-        case 0:
-            statusMessage = "\(kind.statusLabel) · \(kind.title)なし · \(origin.symbolName)"
-            showBlastPane()
-        case 1:
-            navigateToNode(candidates[0], recordJump: true)
-            statusMessage = "\(kind.statusLabel) · \(candidates[0].symbolName)"
-            showDiffPane()
-        default:
-            jumpPicker = SymbolJumpPicker(kind: kind, originID: origin.id, candidates: candidates)
-            statusMessage = "\(kind.statusLabel) · \(candidates.count)件から選択"
-        }
-    }
-
-    private func navigateToNode(_ node: CallGraphNode, recordJump: Bool) {
-        guard callGraph?.node(id: node.id) != nil else { return }
-        if recordJump {
-            jumpList.recordJump(from: selectedNodeID, to: node.id)
-            jumpNavigationEpoch &+= 1
-        }
-        selectedNodeID = node.id
-    }
-
-    private func bumpJumpNavigation() {
-        jumpNavigationEpoch &+= 1
-    }
-
-    func filteredPullRequests(query: String, language: Language?) -> [PullRequest] {
-        pullRequests.filter { pr in
-            if let language, pr.language != language { return false }
-            let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !q.isEmpty else { return true }
-            let haystack = "\(pr.title) \(pr.repository) \(pr.author) #\(pr.number)".lowercased()
-            return haystack.contains(q.lowercased())
-        }
-    }
-
-    private func persistNotes() {
-        NotesStore.save(notes)
-    }
-
-    func checkoutSelected(settings: AppSettings) async {
-        guard var pr = selectedPR else { return }
-        isCheckingOut = true
-        lastError = nil
-        defer { isCheckingOut = false }
-
-        do {
-            if pr.headRef == nil {
-                guard let client = settings.makeClient() else {
-                    throw GitHubClientError.missingToken
-                }
-                let detail = try await client.fetchPullDetail(owner: pr.owner, repo: pr.name, number: pr.number)
-                pr = enrich(pr, with: detail)
-                replacePR(pr)
-            }
-
-            let result = try await CheckoutService.checkoutAndOpen(
-                pr: pr,
-                checkoutRoot: settings.defaultCheckoutRoot,
-                shouldOpenIDE: true
-            )
-            checkoutPaths[pr.id] = result.workingDirectory.path
-            let ide = result.openedIDE.map { " · \($0)" } ?? ""
-            statusMessage = "Checkout 完了: \(result.workingDirectory.path)\(ide)"
-            CheckoutNotifier.notifySuccess(
-                repository: pr.repository,
-                path: result.workingDirectory.path
-            )
-        } catch {
-            lastError = error.localizedDescription
-            statusMessage = "Checkout 失敗"
-        }
-    }
-
-    func jumpToSelected(settings: AppSettings) {
-        guard let node = selectedNode else { return }
-        jumpToNode(node, settings: settings)
-    }
-
-    func jumpToNode(_ node: CallGraphNode, settings: AppSettings) {
-        guard let pr = selectedPR else { return }
-        lastError = nil
-
-        let repoDir: URL
-        if let path = checkoutPaths[pr.id] {
-            repoDir = URL(fileURLWithPath: path)
-        } else if let existing = CodeJumpService.existingCheckout(pr: pr, checkoutRoot: settings.defaultCheckoutRoot) {
-            repoDir = existing
-            checkoutPaths[pr.id] = existing.path
-        } else {
-            lastError = CodeJumpError.noCheckout.localizedDescription
-            statusMessage = "Jump には Checkout が必要です"
-            return
-        }
-
-        do {
-            let inferred = Language.infer(fromFilePath: node.filePath)
-            let ide = try CodeJumpService.jump(
-                filePath: node.filePath,
-                line: node.line,
-                language: inferred == .unknown ? pr.language : inferred,
-                repoDirectory: repoDir
-            )
-            statusMessage = "ide · \(ide) · \(node.filePath):\(node.line)"
-        } catch {
-            lastError = error.localizedDescription
-            statusMessage = "Jump 失敗"
-        }
-    }
-
-    func canJump(settings: AppSettings) -> Bool {
-        guard let pr = selectedPR else { return false }
-        if checkoutPaths[pr.id] != nil { return true }
-        return CodeJumpService.existingCheckout(pr: pr, checkoutRoot: settings.defaultCheckoutRoot) != nil
-    }
-
-    func addNote(body: String) {
-        guard let pr = selectedPR, let node = selectedNode else { return }
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        notes.append(
-            ReviewNote(
-                pullRequestID: pr.id,
-                nodeID: node.id,
-                symbolName: node.symbolName,
-                filePath: node.filePath,
-                line: node.line,
-                body: trimmed
-            )
-        )
-        persistNotes()
-        statusMessage = "メモを追加 · \(node.symbolName)"
-    }
-
-    func deleteNote(id: UUID) {
-        notes.removeAll { $0.id == id }
-        persistNotes()
-    }
-
-    func copyNotesMarkdown() {
-        guard let pr = selectedPR else { return }
-        let md = ReviewNoteExporter.markdown(for: notesForSelectedPR, pr: pr)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(md, forType: .string)
-        statusMessage = "メモを Markdown でコピーしました"
-    }
-
-    func copyCallGraphMermaid() {
-        guard let graph = callGraph else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(graph.mermaidFlowchart(), forType: .string)
-        statusMessage = "呼び出しグラフを Mermaid でコピーしました"
-    }
-
-    /// 選択シンボル周りの呼び出し図を Mermaid でコピーする。
-    func copyEgoMermaid(hops: Int = 1) {
-        guard let graph = callGraph, let id = selectedNodeID else {
-            statusMessage = "先にシンボルを選択してください"
-            return
-        }
-        let md = graph.mermaidEgo(around: id, hops: hops)
-        guard !md.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(md, forType: .string)
-        statusMessage = "影響範囲グラフを Mermaid でコピーしました"
-    }
-
-    func submitNotesToGitHub(settings: AppSettings) async {
-        guard var pr = selectedPR else { return }
-        let batch = notesForSelectedPR
-        guard !batch.isEmpty else { return }
-
-        isSubmittingNotes = true
-        lastError = nil
-        defer { isSubmittingNotes = false }
-
-        do {
-            guard let client = settings.makeClient() else {
-                throw GitHubClientError.missingToken
-            }
-            if pr.headSHA == nil {
-                let detail = try await client.fetchPullDetail(owner: pr.owner, repo: pr.name, number: pr.number)
-                pr = enrich(pr, with: detail)
-                replacePR(pr)
-            }
-            guard let sha = pr.headSHA, !sha.isEmpty else {
-                throw GitHubClientError.http(400, "commit SHA を取得できませんでした")
-            }
-
-            let response = try await client.submitReviewComments(
-                owner: pr.owner,
-                repo: pr.name,
-                number: pr.number,
-                commitID: sha,
-                body: "Reviewed with Prismo (\(batch.count) notes)",
-                notes: batch
-            )
-            if let url = response.htmlURL, let link = URL(string: url) {
-                NSWorkspace.shared.open(link)
-            }
-            statusMessage = "GitHub にレビューを投稿しました"
-            // 投稿成功後はクリア（再投稿事故を防ぐ）
-            notes.removeAll { $0.pullRequestID == pr.id }
-            persistNotes()
-        } catch {
-            lastError = error.localizedDescription
-            statusMessage = "レビュー投稿に失敗"
+            selectedNodeID = first.id
         }
     }
 
@@ -432,28 +79,23 @@ final class ReviewStore: ObservableObject {
         defer { isLoading = false }
 
         if settings.useDemoData {
-            applyDemo(settings: settings, status: "デモデータ")
+            applyDemo(status: "デモデータ")
             return
         }
 
         guard let client = settings.makeClient() else {
-            applyDemo(settings: settings, status: "デモデータ（アカウント未設定）")
+            applyDemo(status: "デモデータ（トークン未設定）")
             lastError = GitHubClientError.missingToken.localizedDescription
             return
         }
 
         do {
-            let accountLabel = settings.activeAccount?.shortTitle ?? "GitHub"
             let items = try await client.fetchInbox()
             if Task.isCancelled { return }
             if items.isEmpty {
-                applyDemo(settings: settings, status: "該当 PR なし — デモを表示")
+                applyDemo(status: "該当 PR なし — デモを表示")
             } else {
-                apply(
-                    items,
-                    preferAssignedFirst: settings.preferAssignedFirst,
-                    status: "\(accountLabel) · \(items.count)件"
-                )
+                apply(items, status: "GitHub · \(items.count)件")
                 if let pr = selectedPR {
                     loadCallGraph(for: pr, settings: settings)
                 }
@@ -461,15 +103,14 @@ final class ReviewStore: ObservableObject {
         } catch {
             if Task.isCancelled { return }
             lastError = error.localizedDescription
-            applyDemo(settings: settings, status: "デモデータ（取得失敗）")
+            applyDemo(status: "デモデータ（取得失敗）")
         }
     }
 
-    private func applyDemo(settings: AppSettings, status: String) {
-        apply(Self.fixturePRs, preferAssignedFirst: settings.preferAssignedFirst, status: status)
+    private func applyDemo(status: String) {
+        apply(Self.fixturePRs, status: status)
         if let pr = selectedPR {
             pullFiles = Self.fixtureFiles(for: pr.id)
-            remoteComments = Self.fixtureComments(for: pr.id)
             callGraph = ImportCallGraphBuilder.build(from: pullFiles)
             if selectedNodeID == nil {
                 selectedNodeID = callGraph?.orderedNodes.first?.id
@@ -477,17 +118,14 @@ final class ReviewStore: ObservableObject {
         }
     }
 
-    private func apply(_ items: [PullRequest], preferAssignedFirst: Bool, status: String) {
+    /// アサイン済みを先頭に、更新日時の新しい順で並べる。
+    private func apply(_ items: [PullRequest], status: String) {
         var sorted = items
-        if preferAssignedFirst {
-            sorted.sort {
-                if $0.isAssignedToMe != $1.isAssignedToMe {
-                    return $0.isAssignedToMe && !$1.isAssignedToMe
-                }
-                return $0.updatedAt > $1.updatedAt
+        sorted.sort {
+            if $0.isAssignedToMe != $1.isAssignedToMe {
+                return $0.isAssignedToMe && !$1.isAssignedToMe
             }
-        } else {
-            sorted.sort { $0.updatedAt > $1.updatedAt }
+            return $0.updatedAt > $1.updatedAt
         }
         pullRequests = sorted
         inboxUpdatedAt = Date()
@@ -497,7 +135,6 @@ final class ReviewStore: ObservableObject {
             selectedPRID = sorted.first?.id
             selectedNodeID = nil
             pullFiles = []
-            remoteComments = []
             callGraph = nil
         }
     }
@@ -506,12 +143,10 @@ final class ReviewStore: ObservableObject {
         graphTask?.cancel()
         callGraph = nil
         pullFiles = []
-        remoteComments = []
         selectedNodeID = nil
 
         if settings.useDemoData || pr.repository.hasPrefix("akidon0000/sample-") {
             pullFiles = Self.fixtureFiles(for: pr.id)
-            remoteComments = Self.fixtureComments(for: pr.id)
             callGraph = ImportCallGraphBuilder.build(from: pullFiles)
             selectedNodeID = callGraph?.orderedNodes.first?.id
             return
@@ -521,77 +156,22 @@ final class ReviewStore: ObservableObject {
             do {
                 guard let client = settings.makeClient() else {
                     pullFiles = Self.fixtureFiles(for: pr.id)
-                    remoteComments = Self.fixtureComments(for: pr.id)
                     callGraph = ImportCallGraphBuilder.build(from: pullFiles)
                     selectedNodeID = callGraph?.orderedNodes.first?.id
                     return
                 }
-                async let detail = client.fetchPullDetail(owner: pr.owner, repo: pr.name, number: pr.number)
-                async let files = client.fetchPullFiles(owner: pr.owner, repo: pr.name, number: pr.number)
-                async let comments = client.fetchPullReviewComments(owner: pr.owner, repo: pr.name, number: pr.number)
-                let (d, f, c) = try await (detail, files, comments)
+                let files = try await client.fetchPullFiles(owner: pr.owner, repo: pr.name, number: pr.number)
                 if Task.isCancelled { return }
-
-                let enriched = enrich(pr, with: d)
-                let lang = f.compactMap { Language.infer(fromFilePath: $0.filename) }
-                    .first(where: { $0 != .unknown }) ?? enriched.language
-                let updated = PullRequest(
-                    id: enriched.id,
-                    number: enriched.number,
-                    title: enriched.title,
-                    repository: enriched.repository,
-                    owner: enriched.owner,
-                    name: enriched.name,
-                    author: enriched.author,
-                    url: enriched.url,
-                    isAssignedToMe: enriched.isAssignedToMe,
-                    language: lang,
-                    updatedAt: enriched.updatedAt,
-                    headRef: enriched.headRef,
-                    headSHA: enriched.headSHA,
-                    cloneURL: enriched.cloneURL,
-                    sshURL: enriched.sshURL
-                )
-                replacePR(updated)
-                pullFiles = f
-                remoteComments = c
-                callGraph = ImportCallGraphBuilder.build(from: f)
+                pullFiles = files
+                callGraph = ImportCallGraphBuilder.build(from: files)
                 selectedNodeID = callGraph?.orderedNodes.first?.id
             } catch {
                 if Task.isCancelled { return }
                 lastError = error.localizedDescription
                 pullFiles = Self.fixtureFiles(for: pr.id)
-                remoteComments = Self.fixtureComments(for: pr.id)
                 callGraph = ImportCallGraphBuilder.build(from: pullFiles)
                 selectedNodeID = callGraph?.orderedNodes.first?.id
             }
-        }
-    }
-
-    private func enrich(_ pr: PullRequest, with detail: GitHubPullRequestDetail) -> PullRequest {
-        let repo = detail.base.repo
-        return PullRequest(
-            id: pr.id,
-            number: pr.number,
-            title: detail.title,
-            repository: repo?.fullName ?? pr.repository,
-            owner: pr.owner,
-            name: pr.name,
-            author: detail.user.login,
-            url: URL(string: detail.htmlURL) ?? pr.url,
-            isAssignedToMe: pr.isAssignedToMe,
-            language: pr.language,
-            updatedAt: pr.updatedAt,
-            headRef: detail.head.ref,
-            headSHA: detail.head.sha,
-            cloneURL: repo?.cloneURL ?? pr.cloneURL,
-            sshURL: repo?.sshURL ?? pr.sshURL
-        )
-    }
-
-    private func replacePR(_ pr: PullRequest) {
-        if let index = pullRequests.firstIndex(where: { $0.id == pr.id }) {
-            pullRequests[index] = pr
         }
     }
 
@@ -604,10 +184,7 @@ final class ReviewStore: ObservableObject {
             author: "alice",
             url: URL(string: "https://github.com/akidon0000/sample-ios/pull/128")!,
             isAssignedToMe: true, language: .swift,
-            updatedAt: Date().addingTimeInterval(-3600),
-            headRef: "feature/cache", headSHA: nil,
-            cloneURL: "https://github.com/akidon0000/sample-ios.git",
-            sshURL: "git@github.com:akidon0000/sample-ios.git"
+            updatedAt: Date().addingTimeInterval(-3600)
         ),
         PullRequest(
             id: 2, number: 45, title: "Rewrite auth interceptor",
@@ -615,10 +192,7 @@ final class ReviewStore: ObservableObject {
             author: "bob",
             url: URL(string: "https://github.com/akidon0000/sample-android/pull/45")!,
             isAssignedToMe: true, language: .kotlin,
-            updatedAt: Date().addingTimeInterval(-7200),
-            headRef: "feature/auth", headSHA: nil,
-            cloneURL: "https://github.com/akidon0000/sample-android.git",
-            sshURL: "git@github.com:akidon0000/sample-android.git"
+            updatedAt: Date().addingTimeInterval(-7200)
         ),
         PullRequest(
             id: 3, number: 9, title: "Animate onboarding hero",
@@ -626,10 +200,7 @@ final class ReviewStore: ObservableObject {
             author: "carol",
             url: URL(string: "https://github.com/akidon0000/sample-flutter/pull/9")!,
             isAssignedToMe: false, language: .dart,
-            updatedAt: Date().addingTimeInterval(-86400),
-            headRef: "feature/hero", headSHA: nil,
-            cloneURL: "https://github.com/akidon0000/sample-flutter.git",
-            sshURL: "git@github.com:akidon0000/sample-flutter.git"
+            updatedAt: Date().addingTimeInterval(-86400)
         ),
     ]
 
@@ -729,38 +300,5 @@ final class ReviewStore: ObservableObject {
                 ),
             ]
         }
-    }
-
-    private static func fixtureComments(for prID: Int) -> [GitHubClient.GitHubReviewComment] {
-        switch prID {
-        case 1:
-            return [
-                GitHubClient.GitHubReviewComment(
-                    id: 9001,
-                    path: "Sources/Features/Inbox/InboxStore.swift",
-                    line: 18,
-                    body: "キャッシュ無効化のタイミングも書いてほしい",
-                    user: GitHubUser(login: "reviewer"),
-                    htmlURL: "https://github.com/akidon0000/sample-ios/pull/128#discussion_r1"
-                )
-            ]
-        default:
-            return []
-        }
-    }
-
-    /// 選択中シンボルのファイルに紐づく既存コメント（該当ファイルを先頭に並べる）。
-    var remoteCommentsForSelectedFile: [GitHubClient.GitHubReviewComment] {
-        guard let path = selectedNode?.filePath else { return remoteComments }
-        let matched = remoteComments.filter { $0.path == path }
-        let others = remoteComments.filter { $0.path != path }
-        // 選択ファイルの議論を先に、残りはその後。件数ゼロでも一覧は残す。
-        return matched + others
-    }
-
-    /// 選択中ファイルに紐づくリモートコメント件数。
-    var remoteCommentCountForSelectedFile: Int {
-        guard let path = selectedNode?.filePath else { return 0 }
-        return remoteComments.filter { $0.path == path }.count
     }
 }

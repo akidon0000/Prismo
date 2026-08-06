@@ -5,10 +5,11 @@
 ## これは何か
 
 **Prismo** は、PR を「ファイル名順」ではなく「呼び出し順」でレビューするための
-SwiftUI ネイティブ macOS ウィンドウアプリ。起動すると自分にアサインされたレビューが
-先に見え、PR を開くと呼び出しグラフに沿ったファイル列が並ぶ。必要ならブランチを
-checkout して Xcode / Android Studio で続けられる。対応言語は Swift / Kotlin / Dart。
-ソースはすべて [`Prismo/Sources/`](Prismo/Sources/) にある。
+SwiftUI ネイティブ macOS ウィンドウアプリ。機能は意図的に 2 つだけの MVP：
+アサイン優先のインボックスと、呼び出し順の輪郭 + アプリ内 diff。
+対応言語は Swift / Kotlin / Dart。ソースはすべて
+[`Prismo/Sources/`](Prismo/Sources/) にある。削った機能（checkout・IDE ジャンプ・
+グラフ図・マルチアカウント・レビューメモ）は `snapshot/pre-mvp` ブランチに残っている。
 
 思想の近い先行例: [rinkaku](https://github.com/hiro-o918/rinkaku)。
 リポジトリ構成の参考: [Tokfuel](https://github.com/Tokfuel/Tokfuel)。
@@ -24,11 +25,9 @@ checkout して Xcode / Android Studio で続けられる。対応言語は Swif
    SwiftUI / macOS 14+、標準 SDK のみ。例外はオーナー承認後に追記する。
    **Site/** だけは Ignite（静的サイト）を許可済み。
 4. **デモデータを本物と偽らない**：フィクスチャ表示中は UI 上でその旨を示す。
-5. **許可ネットワーク**：アクティブアカウントの GitHub API
-   （`api.github.com` または設定された Enterprise ホストの `/api/v3`）と、
-   ユーザー操作時の `git clone` / `git fetch`（同じホスト）のみ。
-   レビュー投稿はユーザーが明示的に「Post to GitHub」したときだけ。
-   アカウント切替は設定 / ツールバーの `acct:` メニュー（`gh` 複数アカウント・PAT）。
+5. **許可ネットワーク**：`api.github.com`（インボックス検索 / PR files）のみ。
+   認証は単一アカウント（Keychain の PAT、空なら `gh auth token`）。
+   GitHub への書き込みは行わない（読み取り専用）。
 6. **UI 変更時は ui-preview 同期**：`ContentView` / `PRDetailView` / `SettingsView` を
    変えたら、同じ PR で `ScreenshotRenderer.allScreens()` と
    [`.github/workflows/ui-preview.yml`](.github/workflows/ui-preview.yml) の

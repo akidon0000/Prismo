@@ -43,7 +43,7 @@ jobs:
             case "$1" in
               inbox) echo "インボックス（ダーク）" ;;
               inbox-light) echo "インボックス（ライト）" ;;
-              detail) echo "PR 詳細（呼び出しグラフ + Diff）" ;;
+              detail) echo "PR 詳細（変更の輪郭 + Diff）" ;;
               settings) echo "設定" ;;
               *) echo "$1" ;;
             esac

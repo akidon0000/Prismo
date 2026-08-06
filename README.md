@@ -6,8 +6,7 @@
 
 <p align="center">
   A macOS app for reviewing pull requests in call order — not file-name order.<br/>
-  Assigned reviews surface first. Open a PR and walk the call graph;<br/>
-  checkout the branch and jump into Xcode or Android Studio when you need to.
+  Assigned reviews surface first. Open a PR and read the diff along the call graph.
 </p>
 
 <p align="center">
@@ -24,10 +23,12 @@
 
 ## Features
 
-- **Assigned first** — Open the app and see PRs waiting for *your* review, with everything else still reachable.
-- **Call-graph file columns** — Changed symbols are ordered by how they call each other (callers before callees), then grouped into file columns. Not alphabetical.
-- **Checkout + IDE jump** — Bring down the PR branch and open the right tool (Xcode / Android Studio) when a glance isn't enough.
-- **Swift · Kotlin · Dart** — Mobile-stack languages first.
+Prismo is intentionally a two-feature MVP:
+
+1. **Assigned-first inbox** — Open the app and see PRs waiting for *your* review, with everything else still reachable. ⌘R to refresh.
+2. **Call-order review** — Changed symbols are ordered by how they call each other (callers before callees), grouped into file columns. Select a symbol to read its patch hunk in the in-app diff pane. ⌘J / ⌘K to walk the outline.
+
+Supported languages: **Swift · Kotlin · Dart** (import + symbol-name reference heuristics).
 
 Inspired by [rinkaku](https://github.com/hiro-o918/rinkaku)'s “see the shape before you read” idea, built as a native macOS window app in the spirit of [Tokfuel](https://github.com/Tokfuel/Tokfuel).
 
@@ -35,18 +36,13 @@ Inspired by [rinkaku](https://github.com/hiro-o918/rinkaku)'s “see the shape b
 
 Working slice:
 
-- **Inbox** via GitHub search (`review-requested` / `assignee` / `involves`), falling back to demo data when unauthenticated
-- **Token** from Keychain, or `gh auth token` when empty
+- **Inbox** via GitHub search (`review-requested` / `assignee` / `involves`), falling back to demo data when unauthenticated (clearly labeled)
+- **Token** from Keychain (PAT), or `gh auth token` when empty — github.com, single account
 - **Call-graph columns** from PR file patches (import + symbol-name reference heuristics for Swift · Kotlin · Dart)
-- **Checkout** of `refs/pull/N/head` + open Xcode / Android Studio (reuses `~/ghq/...` when present)
 - **In-app diff pane** — select a symbol to see its patch hunk
-- **Code jump** — open `file:line` in Xcode / Android Studio / VS Code after checkout
-- **Review notes** — attach notes to symbols, copy Markdown, or post a batched GitHub COMMENT review (persisted locally); shows existing GitHub line comments
-- **Blast radius** — 1-hop callers / callees for the selected symbol
-- **Keyboard** — ⌘R refresh, ⌘J/⌘K next/prev symbol, ⌘⇧J jump, ⌘⇧N note
-- **Inbox filter** — search + Swift/Kotlin/Dart language picker
+- **Keyboard** — ⌘R refresh, ⌘J/⌘K next/prev symbol
 
-Still ahead: tree-sitter-grade symbol graphs.
+Still ahead: tree-sitter-grade symbol graphs, checkout + IDE jump, review notes, multi-account. (A pre-MVP build with those features lives on the `snapshot/pre-mvp` branch.)
 
 ## Install
 

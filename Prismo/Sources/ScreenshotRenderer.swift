@@ -69,15 +69,10 @@ enum ScreenshotRenderer {
         let store = fixtureStore()
         let settings = AppSettings.shared
         settings.useDemoData = true
-        var showingAddNote = false
-        let binding = Binding(
-            get: { showingAddNote },
-            set: { showingAddNote = $0 }
-        )
 
         let inboxSize = CGSize(width: 1200, height: 800)
         let detailSize = CGSize(width: 1200, height: 800)
-        let settingsSize = CGSize(width: 560, height: 620)
+        let settingsSize = CGSize(width: 480, height: 320)
 
         return [
             ("inbox", try renderStandalone(
@@ -91,7 +86,7 @@ enum ScreenshotRenderer {
                 colorScheme: .light
             )),
             ("detail", try renderStandalone(
-                PRDetailView(store: store, settings: settings, showingAddNote: binding),
+                PRDetailView(store: store, settings: settings),
                 probeSize: detailSize,
                 colorScheme: .dark
             )),

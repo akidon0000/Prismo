@@ -9,7 +9,7 @@ enum GitHubClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingToken:
-            return "GitHub アカウントのトークンを解決できません。設定でアカウントを切り替えるか、`gh auth login` / PAT を確認してください。"
+            return "GitHub トークンを解決できません。設定で PAT を入れるか、`gh auth login` を確認してください。"
         case .http(let code, let body):
             return "GitHub API エラー (\(code)): \(body.prefix(200))"
         case .decoding(let error):
@@ -24,38 +24,6 @@ struct GitHubUser: Decodable, Sendable, Hashable {
     let login: String
 }
 
-struct GitHubRepo: Decodable, Sendable {
-    let fullName: String
-    let cloneURL: String
-    let sshURL: String
-
-    enum CodingKeys: String, CodingKey {
-        case fullName = "full_name"
-        case cloneURL = "clone_url"
-        case sshURL = "ssh_url"
-    }
-}
-
-struct GitHubRef: Decodable, Sendable {
-    let ref: String
-    let sha: String
-    let repo: GitHubRepo?
-}
-
-struct GitHubPullRequestDetail: Decodable, Sendable {
-    let number: Int
-    let title: String
-    let htmlURL: String
-    let user: GitHubUser
-    let head: GitHubRef
-    let base: GitHubRef
-
-    enum CodingKeys: String, CodingKey {
-        case number, title, user, head, base
-        case htmlURL = "html_url"
-    }
-}
-
 struct GitHubPullFile: Decodable, Sendable, Identifiable {
     var id: String { filename }
     let filename: String
@@ -66,18 +34,15 @@ struct GitHubPullFile: Decodable, Sendable, Identifiable {
     let patch: String?
 }
 
-/// GitHub REST API（依存ゼロの URLSession）。github.com / Enterprise 両対応。
+/// GitHub REST API（依存ゼロの URLSession、github.com のみ）。
 actor GitHubClient {
     private let token: String
-    private let apiBaseURL: URL
-    private let webHost: String
+    private let apiBaseURL = URL(string: "https://api.github.com")!
     private let session: URLSession
     private let decoder: JSONDecoder
 
-    init(token: String, host: String = "github.com", session: URLSession = .shared) {
+    init(token: String, session: URLSession = .shared) {
         self.token = token
-        self.webHost = GitHubAccount.normalizeHost(host)
-        self.apiBaseURL = GitHubHost.apiBaseURL(for: self.webHost)
         self.session = session
         self.decoder = JSONDecoder()
         // search API の日付は ISO8601（小数秒なし）
@@ -90,7 +55,6 @@ actor GitHubClient {
 
     /// レビュー依頼中 + 自分が assignee / involves のオープン PR を集める。
     func fetchInbox() async throws -> [PullRequest] {
-        let me = try await viewer().login
         async let reviewRequested = searchPullRequests(query: "is:pr is:open review-requested:@me")
         async let assigned = searchPullRequests(query: "is:pr is:open assignee:@me")
         async let involved = searchPullRequests(query: "is:pr is:open involves:@me")
@@ -104,103 +68,20 @@ actor GitHubClient {
             let isMine = reviewIDs.contains(item.id) || assigneeIDs.contains(item.id)
             if let existing = byID[item.id] {
                 if isMine && !existing.isAssignedToMe {
-                    byID[item.id] = item.asPullRequest(isAssignedToMe: true, host: webHost)
+                    byID[item.id] = item.asPullRequest(isAssignedToMe: true)
                 }
             } else {
-                byID[item.id] = item.asPullRequest(isAssignedToMe: isMine, host: webHost)
+                byID[item.id] = item.asPullRequest(isAssignedToMe: isMine)
             }
         }
-
-        // involves で自分の PR だけが残る場合のノイズを少し抑える: author==me かつ未アサインは末尾扱いで残す
-        _ = me
         return byID.values.sorted { $0.updatedAt > $1.updatedAt }
-    }
-
-    func fetchPullDetail(owner: String, repo: String, number: Int) async throws -> GitHubPullRequestDetail {
-        try await get(path: "/repos/\(owner)/\(repo)/pulls/\(number)")
     }
 
     func fetchPullFiles(owner: String, repo: String, number: Int) async throws -> [GitHubPullFile] {
         try await get(path: "/repos/\(owner)/\(repo)/pulls/\(number)/files?per_page=100")
     }
 
-    /// 行コメント（レビューコメント）を取得する。
-    func fetchPullReviewComments(owner: String, repo: String, number: Int) async throws -> [GitHubReviewComment] {
-        try await get(path: "/repos/\(owner)/\(repo)/pulls/\(number)/comments?per_page=100")
-    }
-
-    struct GitHubReviewComment: Decodable, Identifiable, Sendable, Hashable {
-        let id: Int
-        let path: String?
-        let line: Int?
-        let body: String
-        let user: GitHubUser?
-        let htmlURL: String?
-
-        enum CodingKeys: String, CodingKey {
-            case id, path, line, body, user
-            case htmlURL = "html_url"
-        }
-    }
-
-    /// メモをまとめて 1 件の PR レビュー（COMMENT）として投稿する。
-    @discardableResult
-    func submitReviewComments(
-        owner: String,
-        repo: String,
-        number: Int,
-        commitID: String,
-        body: String,
-        notes: [ReviewNote]
-    ) async throws -> GitHubReviewResponse {
-        struct Comment: Encodable {
-            let path: String
-            let line: Int
-            let side: String
-            let body: String
-        }
-        struct Payload: Encodable {
-            let commitID: String
-            let body: String
-            let event: String
-            let comments: [Comment]
-
-            enum CodingKeys: String, CodingKey {
-                case body, event, comments
-                case commitID = "commit_id"
-            }
-        }
-
-        let comments = notes.map {
-            Comment(
-                path: $0.filePath,
-                line: max($0.line, 1),
-                side: "RIGHT",
-                body: "**\($0.symbolName)**\n\n\($0.body)"
-            )
-        }
-        let payload = Payload(
-            commitID: commitID,
-            body: body,
-            event: "COMMENT",
-            comments: comments
-        )
-        return try await post(
-            path: "/repos/\(owner)/\(repo)/pulls/\(number)/reviews",
-            body: payload
-        )
-    }
-
     // MARK: - Private
-
-    struct GitHubReviewResponse: Decodable, Sendable {
-        let id: Int
-        let htmlURL: String?
-        enum CodingKeys: String, CodingKey {
-            case id
-            case htmlURL = "html_url"
-        }
-    }
 
     private struct SearchResponse: Decodable {
         let items: [SearchItem]
@@ -218,9 +99,6 @@ actor GitHubClient {
 
         struct PullURL: Decodable {
             let url: String
-            enum CodingKeys: String, CodingKey {
-                case url
-            }
         }
 
         enum CodingKeys: String, CodingKey {
@@ -231,7 +109,7 @@ actor GitHubClient {
             case pullRequest = "pull_request"
         }
 
-        func asPullRequest(isAssignedToMe: Bool, host: String) -> PullRequest {
+        func asPullRequest(isAssignedToMe: Bool) -> PullRequest {
             let parts = repositoryURL.split(separator: "/").map(String.init)
             let owner = parts.count >= 2 ? parts[parts.count - 2] : ""
             let name = parts.last ?? ""
@@ -247,11 +125,7 @@ actor GitHubClient {
                 url: URL(string: htmlURL)!,
                 isAssignedToMe: isAssignedToMe,
                 language: Language.infer(fromRepository: repoFull, title: title),
-                updatedAt: updatedAt,
-                headRef: nil,
-                headSHA: nil,
-                cloneURL: GitHubHost.cloneHTTPS(owner: owner, repo: name, host: host),
-                sshURL: GitHubHost.cloneSSH(owner: owner, repo: name, host: host)
+                updatedAt: updatedAt
             )
         }
     }
@@ -265,36 +139,26 @@ actor GitHubClient {
             URLQueryItem(name: "per_page", value: "50"),
         ]
         guard let url = components.url else { throw GitHubClientError.invalidURL }
-        let response: SearchResponse = try await send(url: url, method: "GET", body: nil as Data?)
+        let response: SearchResponse = try await send(url: url, method: "GET")
         return response.items.filter { $0.pullRequest != nil }
     }
 
     private func get<T: Decodable>(path: String) async throws -> T {
-        try await send(url: apiURL(path: path), method: "GET", body: nil as Data?)
-    }
-
-    private func post<Body: Encodable, T: Decodable>(path: String, body: Body) async throws -> T {
-        let data = try JSONEncoder().encode(body)
-        return try await send(url: apiURL(path: path), method: "POST", body: data)
+        try await send(url: apiURL(path: path), method: "GET")
     }
 
     private func apiURL(path: String) -> URL {
         let trimmed = path.hasPrefix("/") ? path : "/\(path)"
-        let base = apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return URL(string: base + trimmed)!
+        return URL(string: apiBaseURL.absoluteString + trimmed)!
     }
 
-    private func send<T: Decodable>(url: URL, method: String, body: Data?) async throws -> T {
+    private func send<T: Decodable>(url: URL, method: String) async throws -> T {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("PrismoMacOS", forHTTPHeaderField: "User-Agent")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = body
-        }
 
         let (data, response) = try await session.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0

@@ -1,36 +1,17 @@
 import Foundation
 
-/// アクティブアカウントに応じてトークンを解決する。
+/// GitHub トークンの解決。PAT（Keychain）を優先し、空なら `gh auth token`。
 enum TokenResolver {
-    static func resolve(account: GitHubAccount?, pat: String) -> String? {
-        guard let account else {
-            return resolveLegacy(pat: pat)
-        }
-        switch account.tokenMode {
-        case .pat:
-            let trimmed = pat.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        case .ghCLI:
-            return ghAuthToken(hostname: account.host, user: account.login)
-        }
-    }
-
-    /// 旧設定（単一トークン）互換。
-    static func resolveLegacy(pat: String) -> String? {
+    static func resolve(pat: String) -> String? {
         let trimmed = pat.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        return ghAuthToken(hostname: "github.com", user: nil)
+        return ghAuthToken()
     }
 
-    /// `gh auth token`。`--user` / `--hostname` で Enterprise・複数アカウントに対応。
-    static func ghAuthToken(hostname: String, user: String?) -> String? {
-        var args = ["gh", "auth", "token", "--hostname", GitHubAccount.normalizeHost(hostname)]
-        if let user, !user.isEmpty {
-            args += ["--user", user]
-        }
+    static func ghAuthToken() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = args
+        process.arguments = ["gh", "auth", "token", "--hostname", "github.com"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
