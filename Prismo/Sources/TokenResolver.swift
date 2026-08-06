@@ -1,18 +1,17 @@
 import Foundation
 
-/// 設定の Keychain トークンを優先し、無ければ `gh auth token` を試す。
+/// GitHub トークンの解決。PAT（Keychain）を優先し、空なら `gh auth token`。
 enum TokenResolver {
-    static func resolve(settingsToken: String) -> String? {
-        let trimmed = settingsToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    static func resolve(pat: String) -> String? {
+        let trimmed = pat.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
         return ghAuthToken()
     }
 
-    /// `gh auth token`（個人アカウント）。失敗時は nil。
     static func ghAuthToken() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["gh", "auth", "token"]
+        process.arguments = ["gh", "auth", "token", "--hostname", "github.com"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()

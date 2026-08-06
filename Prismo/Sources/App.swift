@@ -1,41 +1,18 @@
 import SwiftUI
-import AppKit
 
 @main
 struct PrismoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = ReviewStore()
     @ObservedObject private var settings = AppSettings.shared
-    @State private var showingAbout = false
-    @State private var showingShortcuts = false
 
     var body: some Scene {
         WindowGroup {
             ContentView(store: store, settings: settings)
                 .frame(minWidth: 960, minHeight: 640)
-                .focusedSceneValue(\.prismoStore, store)
-                .focusedSceneValue(\.prismoSettings, settings)
-                .sheet(isPresented: $showingAbout) {
-                    AboutView()
-                }
-                .sheet(isPresented: $showingShortcuts) {
-                    ShortcutsHelpView()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .prismoShowAbout)) { _ in
-                    showingAbout = true
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .prismoShowShortcuts)) { _ in
-                    showingShortcuts = true
-                }
         }
         .defaultSize(width: 1200, height: 800)
         .commands {
-            CommandGroup(replacing: .appInfo) {
-                Button("Prismo について") {
-                    NotificationCenter.default.post(name: .prismoShowAbout, object: nil)
-                }
-            }
-
             CommandMenu("Review") {
                 Button("インボックスを更新") {
                     NotificationCenter.default.post(name: .prismoRefreshInbox, object: nil)
@@ -53,28 +30,6 @@ struct PrismoApp: App {
                     NotificationCenter.default.post(name: .prismoPreviousSymbol, object: nil)
                 }
                 .keyboardShortcut("k", modifiers: [.command])
-
-                Button("IDE へジャンプ") {
-                    NotificationCenter.default.post(name: .prismoJump, object: nil)
-                }
-                .keyboardShortcut("j", modifiers: [.command, .shift])
-
-                Button("メモを追加…") {
-                    NotificationCenter.default.post(name: .prismoAddNote, object: nil)
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-
-                Button("メモを Markdown コピー") {
-                    NotificationCenter.default.post(name: .prismoCopyNotes, object: nil)
-                }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
-
-                Divider()
-
-                Button("ショートカット一覧…") {
-                    NotificationCenter.default.post(name: .prismoShowShortcuts, object: nil)
-                }
-                .keyboardShortcut("/", modifiers: [.command])
             }
         }
 
@@ -88,29 +43,4 @@ extension Notification.Name {
     static let prismoRefreshInbox = Notification.Name("prismo.refreshInbox")
     static let prismoNextSymbol = Notification.Name("prismo.nextSymbol")
     static let prismoPreviousSymbol = Notification.Name("prismo.previousSymbol")
-    static let prismoJump = Notification.Name("prismo.jump")
-    static let prismoAddNote = Notification.Name("prismo.addNote")
-    static let prismoCopyNotes = Notification.Name("prismo.copyNotes")
-    static let prismoShowAbout = Notification.Name("prismo.showAbout")
-    static let prismoShowShortcuts = Notification.Name("prismo.showShortcuts")
-}
-
-private struct PrismoStoreKey: FocusedValueKey {
-    typealias Value = ReviewStore
-}
-
-private struct PrismoSettingsKey: FocusedValueKey {
-    typealias Value = AppSettings
-}
-
-extension FocusedValues {
-    var prismoStore: ReviewStore? {
-        get { self[PrismoStoreKey.self] }
-        set { self[PrismoStoreKey.self] = newValue }
-    }
-
-    var prismoSettings: AppSettings? {
-        get { self[PrismoSettingsKey.self] }
-        set { self[PrismoSettingsKey.self] = newValue }
-    }
 }

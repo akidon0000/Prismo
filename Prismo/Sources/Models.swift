@@ -36,10 +36,6 @@ struct PullRequest: Identifiable, Hashable, Sendable {
     let isAssignedToMe: Bool
     let language: Language
     let updatedAt: Date
-    let headRef: String?
-    let headSHA: String?
-    let cloneURL: String
-    let sshURL: String
 }
 
 /// 呼び出しグラフ上の 1 ノード（変更されたシンボル、またはその近傍）。
@@ -109,26 +105,5 @@ struct CallGraph: Sendable {
     /// このノードが呼んでいる側（1-hop）。
     func callees(of id: String) -> [CallGraphNode] {
         edges.filter { $0.fromID == id }.compactMap { node(id: $0.toID) }
-    }
-
-    /// Mermaid flowchart（共有・AI 渡し用）。
-    func mermaidFlowchart() -> String {
-        var lines = ["```mermaid", "flowchart TD"]
-        for node in orderedNodes {
-            let safeID = mermaidID(node.id)
-            let label = "\(node.symbolName) · \(node.filePath.split(separator: "/").last.map(String.init) ?? node.filePath)"
-                .replacingOccurrences(of: "\"", with: "'")
-            lines.append("  \(safeID)[\"\(label)\"]")
-        }
-        for edge in edges {
-            lines.append("  \(mermaidID(edge.fromID)) --> \(mermaidID(edge.toID))")
-        }
-        lines.append("```")
-        return lines.joined(separator: "\n")
-    }
-
-    private func mermaidID(_ raw: String) -> String {
-        let cleaned = raw.map { $0.isLetter || $0.isNumber ? $0 : "_" }
-        return "n" + String(cleaned)
     }
 }

@@ -4,267 +4,219 @@ import AppKit
 struct PRDetailView: View {
     @ObservedObject var store: ReviewStore
     @ObservedObject var settings: AppSettings
-    @Binding var showingAddNote: Bool
 
     var body: some View {
         Group {
             if let pr = store.selectedPR {
                 VStack(spacing: 0) {
                     header(pr)
-                    Divider()
+
                     if store.callGraph == nil {
-                        ProgressView("呼び出しグラフを構築中…")
+                        ProgressView("変更の輪郭を読み込み中…")
+                            .controlSize(.small)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let graph = store.callGraph, graph.nodes.isEmpty {
                         ContentUnavailableView(
-                            "変更ファイルなし",
-                            systemImage: "doc",
-                            description: Text("この PR に表示できるコード変更がありません。")
+                            "表示できる変更がありません",
+                            systemImage: "doc.text",
+                            description: Text("このプルリクエストにはシンボルとして読み取れる差分がありません。")
                         )
                     } else if let graph = store.callGraph {
                         HSplitView {
-                            VSplitView {
-                                CallGraphView(
-                                    graph: graph,
-                                    selectedNodeID: store.selectedNodeID,
-                                    commentedPaths: Set(store.remoteComments.compactMap(\.path)),
-                                    onSelect: { store.selectNode($0) }
-                                )
-                                .frame(minHeight: 220)
+                            OutlineTreeView(
+                                graph: graph,
+                                selectedNodeID: store.selectedNodeID,
+                                onSelect: { store.selectNode($0) }
+                            )
+                            .frame(minWidth: 260)
 
-                                BlastRadiusView(
-                                    graph: graph,
-                                    selectedID: store.selectedNodeID,
-                                    onSelect: { store.selectNode($0) }
-                                )
-                                .frame(minHeight: 120)
-                            }
-                            .frame(minWidth: 300)
-
-                            VSplitView {
-                                DiffPaneView(
-                                    filePath: store.selectedNode?.filePath,
-                                    symbolName: store.selectedNode?.symbolName,
-                                    focusLine: store.selectedNode?.line ?? 1,
-                                    lines: store.focusedDiffLines,
-                                    canJump: store.canJump(settings: settings),
-                                    onJump: { store.jumpToSelected(settings: settings) },
-                                    onAddNote: { showingAddNote = true },
-                                    canAddNote: store.selectedNode != nil,
-                                    softWrap: settings.diffSoftWrap
-                                )
-                                .frame(minHeight: 180)
-
-                                NotesPanelView(
-                                    store: store,
-                                    onCopy: { store.copyNotesMarkdown() },
-                                    onSubmit: {
-                                        Task { await store.submitNotesToGitHub(settings: settings) }
-                                    },
-                                    isSubmitting: store.isSubmittingNotes,
-                                    canSubmit: !pr.repository.hasPrefix("akidon0000/sample-")
-                                )
-                                .frame(minHeight: 120)
-                            }
+                            DiffPaneView(
+                                filePath: store.selectedNode?.filePath,
+                                symbolName: store.selectedNode?.symbolName,
+                                focusLine: store.selectedNode?.line ?? 1,
+                                lines: store.focusedDiffLines
+                            )
                             .frame(minWidth: 360)
                         }
+                        .padding(12)
                     }
                 }
+                .background(Theme.chromeBackground)
             }
         }
     }
 
     @ViewBuilder
     private func header(_ pr: PullRequest) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(pr.repository)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("#\(pr.number)  \(pr.title)")
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(2)
-                if let head = pr.headRef {
-                    Text(head)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.tertiary)
-                }
-                if let graph = store.callGraph {
-                    Text("\(graph.nodes.count) symbols · \(graph.edges.count) edges · \(graph.fileColumns.count) files")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if pr.isAssignedToMe {
-                Label("Assigned", systemImage: "person.fill.checkmark")
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.tint.opacity(0.15), in: Capsule())
-            }
-            Button {
-                Task { await store.checkoutSelected(settings: settings) }
-            } label: {
-                if store.isCheckingOut {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Label("Checkout", systemImage: "arrow.down.doc")
-                }
-            }
-            .disabled(store.isCheckingOut || pr.repository.hasPrefix("akidon0000/sample-"))
-            .help("該当ブランチを checkout して IDE を開く")
-
-            Button {
-                store.copyCallGraphMermaid()
-            } label: {
-                Label("Mermaid", systemImage: "point.3.connected.trianglepath.dotted")
-            }
-            .disabled(store.callGraph == nil || store.callGraph?.nodes.isEmpty == true)
-            .help("呼び出しグラフを Mermaid でコピー")
-
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(pr.url.absoluteString, forType: .string)
-                store.statusMessage = "PR URL をコピーしました"
-            } label: {
-                Label("Copy URL", systemImage: "link")
-            }
-            .help("PR の URL をクリップボードへコピー")
-
-            Button {
-                NSWorkspace.shared.open(pr.url)
-            } label: {
-                Label("GitHub", systemImage: "safari")
-            }
-        }
-        .padding(16)
-    }
-}
-
-/// ファイル名順ではなく、呼び出し順に並んだファイル列ビュー。
-struct CallGraphView: View {
-    let graph: CallGraph
-    let selectedNodeID: String?
-    var commentedPaths: Set<String> = []
-    let onSelect: (CallGraphNode) -> Void
-
-    var body: some View {
-        ScrollView([.horizontal, .vertical]) {
-            HStack(alignment: .top, spacing: 16) {
-                ForEach(Array(graph.fileColumns.enumerated()), id: \.element.filePath) { index, column in
-                    FileColumnView(
-                        index: index,
-                        filePath: column.filePath,
-                        nodes: column.nodes,
-                        selectedNodeID: selectedNodeID,
-                        hasComments: commentedPaths.contains(column.filePath),
-                        onSelect: onSelect
-                    )
-                }
-            }
-            .padding(20)
-        }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
-    }
-}
-
-private struct FileColumnView: View {
-    let index: Int
-    let filePath: String
-    let nodes: [CallGraphNode]
-    let selectedNodeID: String?
-    var hasComments: Bool = false
-    let onSelect: (CallGraphNode) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text("\(index + 1)")
-                    .font(.caption2.monospacedDigit().weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(.tint))
-                Text(filePath.split(separator: "/").last.map(String.init) ?? filePath)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                if hasComments {
-                    Image(systemName: "bubble.left.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.blue)
-                        .help("このファイルに既存コメントあり")
-                }
-            }
-            .help(filePath)
-
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(nodes) { node in
-                    SymbolCard(
-                        node: node,
-                        isSelected: node.id == selectedNodeID,
-                        hasComments: hasComments
-                    ) {
-                        onSelect(node)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(pr.repository)
+                            .font(Theme.caption)
+                            .foregroundStyle(.secondary)
+                        Text("#\(pr.number)")
+                            .font(Theme.caption.monospacedDigit().weight(.medium))
+                            .foregroundStyle(.secondary)
+                        if pr.isAssignedToMe {
+                            Text("レビュー依頼")
+                                .font(Theme.caption2.weight(.semibold))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Theme.accent.opacity(0.14)))
+                                .foregroundStyle(Theme.accent)
+                        }
                     }
+                    Text(pr.title)
+                        .font(Theme.title)
+                        .lineLimit(2)
                 }
+
+                Spacer(minLength: 12)
+
+                Button {
+                    NSWorkspace.shared.open(pr.url)
+                } label: {
+                    Label("GitHubで開く", systemImage: "safari")
+                }
+                .buttonStyle(.bordered)
             }
-        }
-        .frame(width: 240, alignment: .topLeading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08))
-        )
-    }
-}
 
-private struct SymbolCard: View {
-    let node: CallGraphNode
-    let isSelected: Bool
-    var hasComments: Bool = false
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(node.kind.label)
-                        .font(.caption2.monospaced())
+            if let node = store.selectedNode {
+                HStack(spacing: 12) {
+                    Label(node.symbolName, systemImage: "function")
+                        .font(Theme.callout.weight(.medium))
+                        .lineLimit(1)
+                    Text((node.filePath as NSString).lastPathComponent + ":\(node.line)")
+                        .font(Theme.caption.monospaced())
                         .foregroundStyle(.secondary)
                     Spacer()
-                    if hasComments {
-                        Image(systemName: "bubble.left")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-                    if node.isChanged {
-                        Text("changed")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.orange)
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(.bar)
+    }
+}
+
+/// 呼び出し順のファイル / シンボル一覧。
+struct OutlineTreeView: View {
+    let graph: CallGraph
+    let selectedNodeID: String?
+    let onSelect: (CallGraphNode) -> Void
+    @State private var collapsed: Set<String> = []
+
+    var body: some View {
+        ContentPane(
+            title: "変更の輪郭",
+            symbol: "list.bullet.indent",
+            trailing: "\(graph.fileColumns.count) ファイル"
+        ) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(graph.fileColumns.enumerated()), id: \.element.filePath) { index, column in
+                        fileRow(index: index, path: column.filePath, nodes: column.nodes)
+                        if !collapsed.contains(column.filePath) {
+                            ForEach(column.nodes) { node in
+                                symbolRow(node)
+                            }
+                        }
                     }
                 }
-                Text(node.symbolName)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.primary)
-                Text("L\(node.line)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 4)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func fileRow(index: Int, path: String, nodes: [CallGraphNode]) -> some View {
+        let expanded = !collapsed.contains(path)
+        let changed = nodes.filter(\.isChanged).count
+        let fanIn = nodes.map { graph.callers(of: $0.id).count }.reduce(0, +)
+        let highRisk = changed > 0 && fanIn >= Theme.highFanInThreshold
+        let name = path.split(separator: "/").last.map(String.init) ?? path
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if collapsed.contains(path) { collapsed.remove(path) }
+                else { collapsed.insert(path) }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 12)
+                if highRisk {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.risk)
+                }
+                Text(name)
+                    .font(Theme.callout.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if changed > 0 {
+                    Text("\(changed)")
+                        .font(Theme.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .help("変更シンボル数")
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(path)
+    }
+
+    private func symbolRow(_ node: CallGraphNode) -> some View {
+        let fanIn = graph.callers(of: node.id).count
+        let highRisk = node.isChanged && fanIn >= Theme.highFanInThreshold
+        let selected = node.id == selectedNodeID
+
+        return Button {
+            onSelect(node)
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(selected ? Theme.accent : Color.clear)
+                    .frame(width: 6, height: 6)
+                    .padding(.leading, 18)
+                Text(node.kind.label)
+                    .font(Theme.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 40, alignment: .leading)
+                Text(node.symbolName)
+                    .font(Theme.callout.weight(selected ? .semibold : .regular))
+                    .foregroundStyle(node.isChanged ? .primary : Theme.dim)
+                    .lineLimit(1)
+                if highRisk {
+                    Image(systemName: "flame.fill")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.warning)
+                        .help("変更ありかつ呼び出し元が多い")
+                }
+                Spacer(minLength: 4)
+                if fanIn > 0 {
+                    Text("←\(fanIn)")
+                        .font(Theme.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Text("L\(node.line)")
+                    .font(Theme.caption2.monospacedDigit())
+                    .foregroundStyle(.quaternary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.18) : (node.isChanged ? Color.orange.opacity(0.08) : Color.primary.opacity(0.03)))
+                RoundedRectangle(cornerRadius: Theme.tightCorner, style: .continuous)
+                    .fill(selected ? Theme.accent.opacity(0.12) : Color.clear)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isSelected ? Color.accentColor.opacity(0.6) : .clear, lineWidth: 1.5)
-            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

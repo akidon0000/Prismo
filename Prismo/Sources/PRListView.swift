@@ -3,20 +3,10 @@ import SwiftUI
 struct PRListView: View {
     @ObservedObject var store: ReviewStore
     @ObservedObject var settings: AppSettings
-    @State private var query = ""
-    @State private var languageFilter: Language? = nil
     @State private var otherExpanded = false
 
-    private var filtered: [PullRequest] {
-        let base = store.filteredPullRequests(query: query, language: languageFilter)
-        if settings.showAssignedOnly {
-            return base.filter(\.isAssignedToMe)
-        }
-        return base
-    }
-
-    private var assigned: [PullRequest] { filtered.filter(\.isAssignedToMe) }
-    private var others: [PullRequest] { filtered.filter { !$0.isAssignedToMe } }
+    private var assigned: [PullRequest] { store.pullRequests.filter(\.isAssignedToMe) }
+    private var others: [PullRequest] { store.pullRequests.filter { !$0.isAssignedToMe } }
 
     var body: some View {
         List(selection: Binding(
@@ -26,55 +16,48 @@ struct PRListView: View {
                 store.select(pr, settings: settings)
             }
         )) {
-            Section("レビュー依頼（自分）") {
+            Section {
                 ForEach(assigned) { pr in
                     PRRow(pr: pr)
                         .tag(pr.id)
                 }
+            } header: {
+                Text("レビュー依頼")
+                    .font(Theme.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
             }
-            Section("その他", isExpanded: $otherExpanded) {
+
+            Section(isExpanded: $otherExpanded) {
                 ForEach(others) { pr in
                     PRRow(pr: pr)
                         .tag(pr.id)
                 }
+            } header: {
+                Text("その他（\(others.count)）")
+                    .font(Theme.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
             }
         }
         .listStyle(.sidebar)
-        .navigationTitle("Prismo")
-        .searchable(text: $query, prompt: "タイトル / リポ / 作者")
+        .navigationTitle("Inbox")
+        .navigationSubtitle("Prismo")
+        .safeAreaInset(edge: .bottom) {
+            if let error = store.lastError {
+                Text(error)
+                    .font(Theme.caption2)
+                    .foregroundStyle(Theme.risk)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.risk.opacity(0.08))
+            }
+        }
         .onAppear {
             otherExpanded = assigned.isEmpty
         }
         .onChange(of: assigned.count) { _, count in
             if count > 0 { otherExpanded = false }
-        }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Toggle(isOn: $settings.showAssignedOnly) {
-                    Image(systemName: settings.showAssignedOnly ? "person.fill.checkmark" : "person.2")
-                }
-                .toggleStyle(.button)
-                .help(settings.showAssignedOnly ? "アサイン済みのみ表示中" : "すべて表示中")
-            }
-            ToolbarItem(placement: .automatic) {
-                Picker("言語", selection: $languageFilter) {
-                    Text("すべて").tag(Optional<Language>.none)
-                    ForEach([Language.swift, .kotlin, .dart]) { lang in
-                        Text(lang.label).tag(Optional(lang))
-                    }
-                }
-                .pickerStyle(.menu)
-                .help("言語で絞り込み")
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if let error = store.lastError {
-                Text(error)
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
     }
 }
@@ -86,33 +69,32 @@ private struct PRRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: pr.language.systemImage)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(width: 14)
                 Text(pr.repository)
-                    .font(.caption)
+                    .font(Theme.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Text("#\(pr.number)")
-                    .font(.caption.monospacedDigit())
+                    .font(Theme.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
             Text(pr.title)
-                .font(.body.weight(.medium))
+                .font(Theme.callout.weight(.medium))
                 .lineLimit(2)
             HStack(spacing: 6) {
                 Text(pr.author)
-                    .font(.caption2)
+                    .font(Theme.caption2)
                     .foregroundStyle(.tertiary)
                 Text("·")
-                    .font(.caption2)
                     .foregroundStyle(.quaternary)
                 Text(pr.updatedAt, style: .relative)
-                    .font(.caption2)
+                    .font(Theme.caption2)
                     .foregroundStyle(.tertiary)
-                    .help(pr.updatedAt.formatted(date: .abbreviated, time: .shortened))
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 }

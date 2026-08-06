@@ -6,36 +6,14 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("GitHub") {
-                SecureField("Personal Access Token（任意）", text: $settings.githubToken)
-                Text("空のときは `gh auth token` を使います。スコープは repo（プライベート）と read:user。トークンは Keychain に保存します。")
-                    .font(.caption)
+                SecureField("Personal Access Token", text: $settings.githubToken)
+                Text("スコープ: repo（プライベート）と read:user。Keychain に保存します。空の場合は `gh auth token` を使います。")
+                    .font(Theme.monoCaption2)
                     .foregroundStyle(.secondary)
-                Toggle("デモデータを使う", isOn: $settings.useDemoData)
             }
 
             Section("インボックス") {
-                Toggle("アサイン済みを先頭に表示", isOn: $settings.preferAssignedFirst)
-                Toggle("アサイン済みのみ表示", isOn: $settings.showAssignedOnly)
-            }
-
-            Section("Checkout") {
-                TextField("クローン親ディレクトリ", text: $settings.defaultCheckoutRoot)
-                Text("空の場合は一時ディレクトリ（~/…/PrismoCheckouts）を使います。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("外観") {
-                Picker("テーマ", selection: $settings.appearance) {
-                    ForEach(AppSettings.Appearance.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section("Diff") {
-                Toggle("長い行を折り返す", isOn: $settings.diffSoftWrap)
+                Toggle("デモデータを使う", isOn: $settings.useDemoData)
             }
 
             Section("対応言語") {
@@ -43,11 +21,11 @@ struct SettingsView: View {
                     Text("Swift · Kotlin · Dart")
                 }
                 Text("現状は import / 宣言のヒューリスティック。tree-sitter 連携は後続。")
-                    .font(.caption)
+                    .font(Theme.monoCaption2)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 420)
+        .frame(width: 480, height: 320)
     }
 }

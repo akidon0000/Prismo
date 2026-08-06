@@ -3,33 +3,20 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var store: ReviewStore
     @ObservedObject var settings: AppSettings
-    @State private var showingAddNote = false
-
-    private var colorScheme: ColorScheme? {
-        switch settings.appearance {
-        case .system: return nil
-        case .light: return .light
-        case .dark: return .dark
-        }
-    }
 
     var body: some View {
         NavigationSplitView {
             PRListView(store: store, settings: settings)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
         } detail: {
             if store.selectedPR != nil {
-                PRDetailView(
-                    store: store,
-                    settings: settings,
-                    showingAddNote: $showingAddNote
-                )
+                PRDetailView(store: store, settings: settings)
             } else {
-                ContentUnavailableView(
-                    "PR を選択",
-                    systemImage: "arrow.triangle.branch",
-                    description: Text("左の一覧からレビューする PR を選んでください。")
-                )
+                ContentUnavailableView {
+                    Label("プルリクエストを選択", systemImage: "arrow.triangle.branch")
+                } description: {
+                    Text("左の Inbox から、レビューする PR を選んでください。\n呼び出し順の輪郭から差分を読み進められます。")
+                }
             }
         }
         .toolbar {
@@ -38,19 +25,7 @@ struct ContentView: View {
                     ProgressView()
                         .controlSize(.small)
                 }
-                if store.selectedPR != nil {
-                    let count = store.notesForSelectedPR.count
-                    Label("\(count)", systemImage: "note.text")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(count > 0 ? Color.primary : Color.secondary)
-                        .help(count > 0 ? "下書きメモ \(count) 件" : "下書きメモなし")
-                }
-                if let message = store.statusMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+
                 Button {
                     store.loadInbox(settings: settings)
                 } label: {
@@ -60,14 +35,10 @@ struct ContentView: View {
                 .disabled(store.isLoading)
             }
         }
-        .preferredColorScheme(colorScheme)
         .onAppear {
             if store.pullRequests.isEmpty {
                 store.loadInbox(settings: settings)
             }
-        }
-        .onChange(of: settings.preferAssignedFirst) { _, _ in
-            store.loadInbox(settings: settings)
         }
         .onChange(of: settings.useDemoData) { _, _ in
             store.loadInbox(settings: settings)
@@ -83,30 +54,6 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .prismoPreviousSymbol)) { _ in
             store.selectAdjacentNode(delta: -1)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .prismoJump)) { _ in
-            store.jumpToSelected(settings: settings)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .prismoAddNote)) { _ in
-            guard store.selectedNode != nil else { return }
-            showingAddNote = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .prismoCopyNotes)) { _ in
-            store.copyNotesMarkdown()
-        }
-        .sheet(isPresented: $showingAddNote) {
-            if let node = store.selectedNode {
-                AddNoteSheet(
-                    symbolName: node.symbolName,
-                    filePath: node.filePath,
-                    line: node.line,
-                    onCancel: { showingAddNote = false },
-                    onSave: { text in
-                        store.addNote(body: text)
-                        showingAddNote = false
-                    }
-                )
-            }
         }
     }
 }
