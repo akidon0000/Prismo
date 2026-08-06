@@ -73,6 +73,7 @@ bash scripts/screenshot.sh
 ```
 
 PR に `ui-preview 📸` ラベルを付けると、実 UI のスクショがコメントに貼られる。
+`site-preview 🌐` ラベルを付けると、ダウンロードページのプレビュー URL がコメントに貼られる。
 
 ### リリース
 
@@ -81,6 +82,24 @@ PR に `ui-preview 📸` ラベルを付けると、実 UI のスクショがコ
 3. 署名・公証は任意 secrets（`DEVELOPER_ID_P12` など）
 
 詳細は [`AGENTS.md`](AGENTS.md)。
+
+## コントリビューター
+
+<!-- readme: contributors -start -->
+<table>
+	<tbody>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/akidon0000">
+                    <img src="https://avatars.githubusercontent.com/u/53287375?v=4&s=100" width="100;" alt="akidon0000"/>
+                    <br />
+                    <sub><b>akidon0000</b></sub>
+                </a>
+            </td>
+		</tr>
+	</tbody>
+</table>
+<!-- readme: contributors -end -->
 
 ## ライセンス
 

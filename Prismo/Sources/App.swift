@@ -59,6 +59,35 @@ struct PrismoApp: App {
                 }
                 .keyboardShortcut("j", modifiers: [.command, .shift])
 
+                Divider()
+
+                Button("呼び出し先へ（gd）") {
+                    NotificationCenter.default.post(name: .prismoJumpCallees, object: nil)
+                }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+
+                Button("呼び出し元へ（gr）") {
+                    NotificationCenter.default.post(name: .prismoJumpCallers, object: nil)
+                }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+
+                Button("影響範囲を表示（blast）") {
+                    NotificationCenter.default.post(name: .prismoShowBlast, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+
+                Button("ジャンプ履歴を戻る") {
+                    NotificationCenter.default.post(name: .prismoJumpBack, object: nil)
+                }
+                .keyboardShortcut("[", modifiers: [.command])
+
+                Button("ジャンプ履歴を進む") {
+                    NotificationCenter.default.post(name: .prismoJumpForward, object: nil)
+                }
+                .keyboardShortcut("]", modifiers: [.command])
+
+                Divider()
+
                 Button("メモを追加…") {
                     NotificationCenter.default.post(name: .prismoAddNote, object: nil)
                 }
@@ -93,6 +122,11 @@ extension Notification.Name {
     static let prismoCopyNotes = Notification.Name("prismo.copyNotes")
     static let prismoShowAbout = Notification.Name("prismo.showAbout")
     static let prismoShowShortcuts = Notification.Name("prismo.showShortcuts")
+    static let prismoJumpCallees = Notification.Name("prismo.jumpCallees")
+    static let prismoJumpCallers = Notification.Name("prismo.jumpCallers")
+    static let prismoShowBlast = Notification.Name("prismo.showBlast")
+    static let prismoJumpBack = Notification.Name("prismo.jumpBack")
+    static let prismoJumpForward = Notification.Name("prismo.jumpForward")
 }
 
 private struct PrismoStoreKey: FocusedValueKey {

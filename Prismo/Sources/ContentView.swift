@@ -16,7 +16,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             PRListView(store: store, settings: settings)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
         } detail: {
             if store.selectedPR != nil {
                 PRDetailView(
@@ -25,11 +25,11 @@ struct ContentView: View {
                     showingAddNote: $showingAddNote
                 )
             } else {
-                ContentUnavailableView(
-                    "PR を選択",
-                    systemImage: "arrow.triangle.branch",
-                    description: Text("左の一覧からレビューする PR を選んでください。")
-                )
+                ContentUnavailableView {
+                    Label("プルリクエストを選択", systemImage: "arrow.triangle.branch")
+                } description: {
+                    Text("左の Inbox から、レビューする PR を選んでください。\n呼び出し順の輪郭から差分を読み進められます。")
+                }
             }
         }
         .toolbar {
@@ -38,19 +38,15 @@ struct ContentView: View {
                     ProgressView()
                         .controlSize(.small)
                 }
-                if store.selectedPR != nil {
-                    let count = store.notesForSelectedPR.count
-                    Label("\(count)", systemImage: "note.text")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(count > 0 ? Color.primary : Color.secondary)
-                        .help(count > 0 ? "下書きメモ \(count) 件" : "下書きメモなし")
-                }
-                if let message = store.statusMessage {
-                    Text(message)
-                        .font(.caption)
+
+                accountMenu
+
+                if store.notesForSelectedPR.count > 0 {
+                    Text("メモ \(store.notesForSelectedPR.count)")
+                        .font(Theme.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
+
                 Button {
                     store.loadInbox(settings: settings)
                 } label: {
@@ -75,6 +71,9 @@ struct ContentView: View {
         .onChange(of: settings.githubToken) { _, _ in
             store.loadInbox(settings: settings)
         }
+        .onChange(of: settings.activeAccountID) { _, _ in
+            store.loadInbox(settings: settings)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .prismoRefreshInbox)) { _ in
             store.loadInbox(settings: settings)
         }
@@ -86,6 +85,21 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .prismoJump)) { _ in
             store.jumpToSelected(settings: settings)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoJumpCallees)) { _ in
+            store.jumpToCallees()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoJumpCallers)) { _ in
+            store.jumpToCallers()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoShowBlast)) { _ in
+            store.showBlastPane()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoJumpBack)) { _ in
+            store.jumpBack()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prismoJumpForward)) { _ in
+            store.jumpForward()
         }
         .onReceive(NotificationCenter.default.publisher(for: .prismoAddNote)) { _ in
             guard store.selectedNode != nil else { return }
@@ -108,5 +122,36 @@ struct ContentView: View {
                 )
             }
         }
+    }
+
+    @ViewBuilder
+    private var accountMenu: some View {
+        Menu {
+            if settings.accounts.isEmpty {
+                Button("gh から取り込む") {
+                    _ = settings.importFromGhCLI()
+                    store.loadInbox(settings: settings)
+                }
+            } else {
+                ForEach(settings.accounts) { account in
+                    Button {
+                        settings.selectAccount(account.id)
+                    } label: {
+                        if settings.activeAccountID == account.id {
+                            Label(account.displayTitle, systemImage: "checkmark")
+                        } else {
+                            Text(account.displayTitle)
+                        }
+                    }
+                }
+                Divider()
+                Button("gh から再取り込み") {
+                    _ = settings.importFromGhCLI()
+                }
+            }
+        } label: {
+            Label(settings.activeAccount?.shortTitle ?? "アカウント", systemImage: "person.crop.circle")
+        }
+        .help("GitHub アカウントを切り替え")
     }
 }

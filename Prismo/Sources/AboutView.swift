@@ -9,33 +9,34 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(Theme.accent)
                 .symbolRenderingMode(.hierarchical)
 
             Text("Prismo")
-                .font(.largeTitle.weight(.bold))
+                .font(.largeTitle.weight(.semibold))
 
             Text("See the shape of a PR before you read it.")
-                .font(.callout)
+                .font(Theme.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Text("Version \(version)")
-                .font(.caption.monospacedDigit())
+            Text("バージョン \(version)")
+                .font(Theme.caption)
                 .foregroundStyle(.tertiary)
 
             Divider()
 
-            Text("呼び出しグラフの順で差分を読み、アサイン済みレビューを先に片付ける macOS アプリです。")
-                .font(.caption)
+            Text("レビュー依頼を先に見せ、呼び出し順の輪郭から差分を読む macOS アプリです。")
+                .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button("閉じる") { dismiss() }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
         }
         .padding(28)
         .frame(width: 360)

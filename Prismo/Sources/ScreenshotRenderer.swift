@@ -77,7 +77,7 @@ enum ScreenshotRenderer {
 
         let inboxSize = CGSize(width: 1200, height: 800)
         let detailSize = CGSize(width: 1200, height: 800)
-        let settingsSize = CGSize(width: 520, height: 420)
+        let settingsSize = CGSize(width: 560, height: 620)
 
         return [
             ("inbox", try renderStandalone(

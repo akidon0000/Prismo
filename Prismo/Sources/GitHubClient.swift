@@ -9,7 +9,7 @@ enum GitHubClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingToken:
-            return "GitHub トークンが未設定です。設定、または `gh auth login` を確認してください。"
+            return "GitHub アカウントのトークンを解決できません。設定でアカウントを切り替えるか、`gh auth login` / PAT を確認してください。"
         case .http(let code, let body):
             return "GitHub API エラー (\(code)): \(body.prefix(200))"
         case .decoding(let error):
@@ -66,14 +66,18 @@ struct GitHubPullFile: Decodable, Sendable, Identifiable {
     let patch: String?
 }
 
-/// GitHub REST API（依存ゼロの URLSession）。
+/// GitHub REST API（依存ゼロの URLSession）。github.com / Enterprise 両対応。
 actor GitHubClient {
     private let token: String
+    private let apiBaseURL: URL
+    private let webHost: String
     private let session: URLSession
     private let decoder: JSONDecoder
 
-    init(token: String, session: URLSession = .shared) {
+    init(token: String, host: String = "github.com", session: URLSession = .shared) {
         self.token = token
+        self.webHost = GitHubAccount.normalizeHost(host)
+        self.apiBaseURL = GitHubHost.apiBaseURL(for: self.webHost)
         self.session = session
         self.decoder = JSONDecoder()
         // search API の日付は ISO8601（小数秒なし）
@@ -100,10 +104,10 @@ actor GitHubClient {
             let isMine = reviewIDs.contains(item.id) || assigneeIDs.contains(item.id)
             if let existing = byID[item.id] {
                 if isMine && !existing.isAssignedToMe {
-                    byID[item.id] = item.asPullRequest(isAssignedToMe: true)
+                    byID[item.id] = item.asPullRequest(isAssignedToMe: true, host: webHost)
                 }
             } else {
-                byID[item.id] = item.asPullRequest(isAssignedToMe: isMine)
+                byID[item.id] = item.asPullRequest(isAssignedToMe: isMine, host: webHost)
             }
         }
 
@@ -227,7 +231,7 @@ actor GitHubClient {
             case pullRequest = "pull_request"
         }
 
-        func asPullRequest(isAssignedToMe: Bool) -> PullRequest {
+        func asPullRequest(isAssignedToMe: Bool, host: String) -> PullRequest {
             let parts = repositoryURL.split(separator: "/").map(String.init)
             let owner = parts.count >= 2 ? parts[parts.count - 2] : ""
             let name = parts.last ?? ""
@@ -246,37 +250,38 @@ actor GitHubClient {
                 updatedAt: updatedAt,
                 headRef: nil,
                 headSHA: nil,
-                cloneURL: "https://github.com/\(repoFull).git",
-                sshURL: "git@github.com:\(repoFull).git"
+                cloneURL: GitHubHost.cloneHTTPS(owner: owner, repo: name, host: host),
+                sshURL: GitHubHost.cloneSSH(owner: owner, repo: name, host: host)
             )
         }
     }
 
     private func searchPullRequests(query: String) async throws -> [SearchItem] {
-        var components = URLComponents(string: "https://api.github.com/search/issues")!
+        var components = URLComponents(url: apiURL(path: "/search/issues"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "sort", value: "updated"),
             URLQueryItem(name: "order", value: "desc"),
             URLQueryItem(name: "per_page", value: "50"),
         ]
-        let response: SearchResponse = try await send(url: components.url!, method: "GET", body: nil as Data?)
+        guard let url = components.url else { throw GitHubClientError.invalidURL }
+        let response: SearchResponse = try await send(url: url, method: "GET", body: nil as Data?)
         return response.items.filter { $0.pullRequest != nil }
     }
 
     private func get<T: Decodable>(path: String) async throws -> T {
-        guard let url = URL(string: "https://api.github.com\(path)") else {
-            throw GitHubClientError.invalidURL
-        }
-        return try await send(url: url, method: "GET", body: nil as Data?)
+        try await send(url: apiURL(path: path), method: "GET", body: nil as Data?)
     }
 
     private func post<Body: Encodable, T: Decodable>(path: String, body: Body) async throws -> T {
-        guard let url = URL(string: "https://api.github.com\(path)") else {
-            throw GitHubClientError.invalidURL
-        }
         let data = try JSONEncoder().encode(body)
-        return try await send(url: url, method: "POST", body: data)
+        return try await send(url: apiURL(path: path), method: "POST", body: data)
+    }
+
+    private func apiURL(path: String) -> URL {
+        let trimmed = path.hasPrefix("/") ? path : "/\(path)"
+        let base = apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return URL(string: base + trimmed)!
     }
 
     private func send<T: Decodable>(url: URL, method: String, body: Data?) async throws -> T {

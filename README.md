@@ -76,6 +76,7 @@ bash scripts/screenshot.sh                   # README + Site hero PNG
 ```
 
 Label a PR with `ui-preview 📸` to post rendered screens in the conversation.
+Label a PR with `site-preview 🌐` to post a rendered download-page URL.
 
 ### Release
 
@@ -84,6 +85,24 @@ Label a PR with `ui-preview 📸` to post rendered screens in the conversation.
 3. Optional secrets for Developer ID + notarization: `DEVELOPER_ID_P12`, `DEVELOPER_ID_P12_PASSWORD`, `APP_STORE_CONNECT_*`
 
 Sources live under [`Prismo/Sources/`](Prismo/Sources/). See [`AGENTS.md`](AGENTS.md).
+
+## Contributors
+
+<!-- readme: contributors -start -->
+<table>
+	<tbody>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/akidon0000">
+                    <img src="https://avatars.githubusercontent.com/u/53287375?v=4&s=100" width="100;" alt="akidon0000"/>
+                    <br />
+                    <sub><b>akidon0000</b></sub>
+                </a>
+            </td>
+		</tr>
+	</tbody>
+</table>
+<!-- readme: contributors -end -->
 
 ## License
 

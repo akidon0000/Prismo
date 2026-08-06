@@ -10,16 +10,15 @@ struct NotesPanelView: View {
     @State private var confirmingPost = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Label(
-                    "Notes (\(store.notesForSelectedPR.count)) · GitHub (\(store.remoteComments.count))",
-                    systemImage: "note.text"
-                )
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
+        ContentPane(
+            title: "メモ",
+            symbol: "note.text",
+            trailing: "下書き \(store.notesForSelectedPR.count) · GitHub \(store.remoteComments.count)"
+        ) {
+            HStack(spacing: 10) {
                 Spacer()
-                Button("Copy MD", action: onCopy)
+                Button("Markdownをコピー") { onCopy() }
+                    .font(Theme.caption)
                     .disabled(store.notesForSelectedPR.isEmpty)
                 Button {
                     confirmingPost = true
@@ -27,11 +26,13 @@ struct NotesPanelView: View {
                     if isSubmitting {
                         ProgressView().controlSize(.small)
                     } else {
-                        Text("Post to GitHub")
+                        Text("GitHubに投稿")
+                            .font(Theme.caption.weight(.semibold))
                     }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
                 .disabled(!canSubmit || store.notesForSelectedPR.isEmpty || isSubmitting)
-                .help("COMMENT レビューとして一括投稿")
                 .confirmationDialog(
                     "GitHub に投稿しますか？",
                     isPresented: $confirmingPost,
@@ -45,27 +46,25 @@ struct NotesPanelView: View {
                     Text("COMMENT レビューとして \(store.notesForSelectedPR.count) 件のメモを投稿します。投稿後、ローカルの下書きはクリアされます。")
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
 
-            Divider()
+            Divider().opacity(0.4)
 
             List {
-                Section("Draft") {
+                Section {
                     if store.notesForSelectedPR.isEmpty {
                         Text("シンボルを選んでメモを追加")
-                            .font(.caption)
+                            .font(Theme.monoCaption)
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(store.notesForSelectedPR) { note in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(note.symbolName)
-                                    .font(.caption.weight(.semibold))
-                                Text("\(note.filePath):\(note.line)")
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(note.symbolName)  \(note.filePath):\(note.line)")
+                                    .font(Theme.monoCaption2)
+                                    .foregroundStyle(Theme.accent)
                                 Text(note.body)
-                                    .font(.callout)
+                                    .font(Theme.monoCaption)
                                     .textSelection(.enabled)
                             }
                             .padding(.vertical, 2)
@@ -81,38 +80,39 @@ struct NotesPanelView: View {
                             }
                         }
                     }
+                } header: {
+                    Text("draft")
+                        .font(Theme.monoCaption2.weight(.bold))
+                        .foregroundStyle(.secondary)
                 }
 
-                Section(
-                    store.remoteCommentCountForSelectedFile > 0
-                        ? "On GitHub（選択ファイル \(store.remoteCommentCountForSelectedFile) / 全体 \(store.remoteComments.count)）"
-                        : "On GitHub（\(store.remoteComments.count)）"
-                ) {
+                Section {
                     if store.remoteComments.isEmpty {
-                        Text("既存の行コメントはありません")
-                            .font(.caption)
+                        Text("— none —")
+                            .font(Theme.monoCaption)
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(store.remoteCommentsForSelectedFile) { comment in
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 2) {
                                 HStack {
                                     Text(comment.user?.login ?? "unknown")
-                                        .font(.caption.weight(.semibold))
+                                        .font(Theme.monoCaption2.weight(.semibold))
+                                        .foregroundStyle(Theme.accent)
                                     Spacer()
                                     if let line = comment.line {
                                         Text("L\(line)")
-                                            .font(.caption2.monospaced())
+                                            .font(Theme.monoCaption2)
                                             .foregroundStyle(.tertiary)
                                     }
                                 }
                                 if let path = comment.path {
                                     Text(path)
-                                        .font(.caption2.monospaced())
+                                        .font(Theme.monoCaption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                                 Text(comment.body)
-                                    .font(.callout)
+                                    .font(Theme.monoCaption)
                                     .textSelection(.enabled)
                             }
                             .padding(.vertical, 2)
@@ -124,9 +124,18 @@ struct NotesPanelView: View {
                             }
                         }
                     }
+                } header: {
+                    Text(
+                        store.remoteCommentCountForSelectedFile > 0
+                            ? "on-github  sel:\(store.remoteCommentCountForSelectedFile)/\(store.remoteComments.count)"
+                            : "on-github  \(store.remoteComments.count)"
+                    )
+                    .font(Theme.monoCaption2.weight(.bold))
+                    .foregroundStyle(.secondary)
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
     }
 }
@@ -141,28 +150,33 @@ struct AddNoteSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("メモを追加")
-                .font(.headline)
+            Text("note")
+                .font(Theme.monoCallout.weight(.bold))
+                .foregroundStyle(Theme.accent)
             Text("\(symbolName) · \(filePath):\(line)")
-                .font(.caption.monospaced())
+                .font(Theme.monoCaption)
                 .foregroundStyle(.secondary)
             TextEditor(text: $bodyText)
-                .font(.body)
+                .font(Theme.mono)
                 .frame(minHeight: 120)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.primary.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(Theme.accent.opacity(0.35))
                 )
             HStack {
                 Spacer()
-                Button("キャンセル", action: onCancel)
+                Button("cancel", action: onCancel)
+                    .font(Theme.monoCaption)
                     .keyboardShortcut(.cancelAction)
-                Button("保存") {
+                Button("save") {
                     onSave(bodyText)
                 }
+                .font(Theme.monoCaption.weight(.bold))
+                .foregroundStyle(Theme.accent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .buttonStyle(.plain)
         }
         .padding(20)
         .frame(width: 420)
